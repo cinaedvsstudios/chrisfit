@@ -1,0 +1,35 @@
+/*
+  Styles specific to the history screen.
+
+  The history view groups entries by week then by day.  Tapping a week header
+  expands or collapses the days within.  Tapping a day header shows or hides
+  the individual entries.  Colours largely reuse the summary palette.
+*/
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.history-week {
+  padding: 0.5rem;
+  background-color: var(--color-weight-header);
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.history-week + .history-week-content {
+  padding-left: 0.5rem;
+}
+
+.history-day {
+  padding: 0.5rem;
+  background-color: #f5f5f5;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.history-entries {
+  padding-left: 1rem;
+  margin-bottom: 0.5rem;
+}

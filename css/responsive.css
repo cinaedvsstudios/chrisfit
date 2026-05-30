@@ -1,0 +1,17 @@
+/*
+  Responsive tweaks for small screens.
+
+  On narrow viewports the action grid becomes a single column and summary
+  columns wrap naturally.  History screens remain scrollable.
+*/
+
+@media (max-width: 500px) {
+  .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}

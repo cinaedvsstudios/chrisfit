@@ -1,0 +1,86 @@
+/*
+  Layout rules for the primary screens.
+
+  The main screen is divided vertically into a header (day and summary), an
+  action grid and a scrolling entry list.  A fixed bottom bar hosts the
+  navigation buttons.  History and settings screens reuse similar concepts
+  but are hidden when not active.
+*/
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.screen {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.screen.active {
+  display: flex;
+}
+
+.header {
+  background-color: var(--color-header-bg);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.header .date-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header .summary {
+  margin-top: 0.5rem;
+  background-color: var(--color-summary-bg);
+  padding: 0.5rem;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.summary-column {
+  display: flex;
+  flex-direction: column;
+  margin-right: 1rem;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  padding: 0.5rem;
+  overflow-y: auto;
+  max-height: 40vh;
+}
+
+.entries-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 1rem;
+}
+
+.entries-list .entry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.bottom-bar {
+  padding: 0.5rem;
+  border-top: 1px solid var(--color-divider);
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  background-color: var(--color-header-bg);
+}

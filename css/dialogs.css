@@ -1,0 +1,41 @@
+/*
+  Simple modal dialog styling.  Modals are rendered using a full screen
+  translucent overlay and a centred content container.  These dialogs
+  approximate the Compose AlertDialogs used in the Android app.
+*/
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background-color: var(--color-header-bg);
+  padding: 1rem;
+  border-radius: 8px;
+  min-width: 300px;
+  max-width: 90vw;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.modal h2 {
+  margin-top: 0;
+}
+
+.modal .form-group {
+  margin-bottom: 1rem;
+}
+
+.modal .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

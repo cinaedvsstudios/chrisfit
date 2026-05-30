@@ -1,0 +1,35 @@
+/*
+  Base element styling.
+
+  Establishes a consistent look across the entire app by resetting default
+  browser styles and applying a simple typographic scale.  The font family
+  and base sizes are intentionally kept generic to make the UI adaptable.
+*/
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+}
+
+button {
+  font-size: 1rem;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+input, select, textarea {
+  font-size: 1rem;
+  padding: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.hidden {
+  display: none !important;
+}
