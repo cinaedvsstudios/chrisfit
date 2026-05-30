@@ -1,17 +1,12 @@
 /**
  * ChrisFit Web Google Apps Script backend.
  *
- * Derived data sheets:
- * - entries:  id | date | name | calories
- * - foods:    id | name | calories
- * - weights:  id | value | date
- * - settings: id | dailyCalories | dailyDeficit | bmr
- *
- * The Android backup format intentionally excludes generated IDs and settings:
- * { entries:[{date,name,calories}], foods:[{name,calories}], weights:[{date,value}] }
+ * Replace YOUR_SPREADSHEET_ID_HERE before deployment.
+ * Sheets: entries(id,date,name,calories), foods(id,name,calories),
+ * weights(id,value,date), settings(id,dailyCalories,dailyDeficit,bmr).
  */
 const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE';
-const TOKEN = ''; // Optional: enter a shared token here and in js/config.js.
+const TOKEN = '';
 
 function doGet(e) {
   try {
@@ -40,6 +35,7 @@ function doPost(e) {
     if (action === 'deleteentry') return json_(deleteRowById_('entries', data.id));
     if (action === 'weights') return json_(addWeight_(data));
     if (action === 'deleteweight') return json_(deleteRowById_('weights', data.id));
+    if (action === 'batch') return json_(batchOperations_(data.operations || []));
     if (action === 'import') return json_(importData_(data));
     if (action === 'reset') return json_(resetAll_());
     return error_('Unknown POST action: ' + action);
@@ -53,55 +49,30 @@ function validateToken_(e) {
   const supplied = e && e.parameter ? e.parameter.token : '';
   if (supplied !== TOKEN) throw new Error('Unauthorized');
 }
-
-function workbook_() {
-  return SpreadsheetApp.openById(SPREADSHEET_ID);
-}
-
+function workbook_() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
 function sheet_(name) {
   const sheet = workbook_().getSheetByName(name);
   if (!sheet) throw new Error('Missing sheet tab: ' + name);
   return sheet;
 }
-
 function nextId_(sheet) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return 1;
   const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat().map(Number).filter(Number.isFinite);
   return ids.length ? Math.max.apply(null, ids) + 1 : 1;
 }
-
 function getSettings_() {
   const values = sheet_('settings').getDataRange().getValues();
-  if (values.length < 2 || values[1][0] === '') {
-    return { id: 1, dailyCalories: 1500, dailyDeficit: 500, bmr: 2000 };
-  }
-  return {
-    id: Number(values[1][0]) || 1,
-    dailyCalories: Number(values[1][1]) || 1500,
-    dailyDeficit: Number(values[1][2]) || 500,
-    bmr: Number(values[1][3]) || 2000
-  };
+  if (values.length < 2 || values[1][0] === '') return { id: 1, dailyCalories: 1500, dailyDeficit: 500, bmr: 2000 };
+  return { id: Number(values[1][0]) || 1, dailyCalories: Number(values[1][1]) || 1500, dailyDeficit: Number(values[1][2]) || 500, bmr: Number(values[1][3]) || 2000 };
 }
-
 function saveSettings_(data) {
-  const target = sheet_('settings');
-  target.getRange(2, 1, 1, 4).setValues([[
-    1,
-    Number(data.dailyCalories) || 1500,
-    Number(data.dailyDeficit) || 500,
-    Number(data.bmr) || 2000
-  ]]);
+  sheet_('settings').getRange(2, 1, 1, 4).setValues([[1, Number(data.dailyCalories) || 1500, Number(data.dailyDeficit) || 500, Number(data.bmr) || 2000]]);
   return { success: true };
 }
-
 function getFoods_() {
-  return sheet_('foods').getDataRange().getValues().slice(1)
-    .filter(row => row[0] !== '')
-    .map(row => ({ id: Number(row[0]), name: String(row[1]), calories: Number(row[2]) }))
-    .sort((a, b) => b.id - a.id);
+  return sheet_('foods').getDataRange().getValues().slice(1).filter(row => row[0] !== '').map(row => ({ id: Number(row[0]), name: String(row[1]), calories: Number(row[2]) })).sort((a, b) => b.id - a.id);
 }
-
 function addFood_(data) {
   if (!String(data.name || '').trim()) throw new Error('Food name is required.');
   const target = sheet_('foods');
@@ -109,14 +80,9 @@ function addFood_(data) {
   target.appendRow([id, String(data.name).trim(), Number(data.calories)]);
   return { success: true, id: id };
 }
-
 function getEntries_(date) {
-  return sheet_('entries').getDataRange().getValues().slice(1)
-    .filter(row => row[0] !== '' && (!date || String(row[1]) === String(date)))
-    .map(row => ({ id: Number(row[0]), date: String(row[1]), name: String(row[2]), calories: Number(row[3]) }))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  return sheet_('entries').getDataRange().getValues().slice(1).filter(row => row[0] !== '' && (!date || String(row[1]) === String(date))).map(row => ({ id: Number(row[0]), date: String(row[1]), name: String(row[2]), calories: Number(row[3]) })).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 }
-
 function addEntry_(data) {
   if (!String(data.date || '').match(/^\d{4}-\d{2}-\d{2}$/)) throw new Error('Entry date is invalid.');
   if (!String(data.name || '').trim()) throw new Error('Entry name is required.');
@@ -125,14 +91,9 @@ function addEntry_(data) {
   target.appendRow([id, String(data.date), String(data.name).trim(), Number(data.calories)]);
   return { success: true, id: id };
 }
-
 function getWeights_() {
-  return sheet_('weights').getDataRange().getValues().slice(1)
-    .filter(row => row[0] !== '')
-    .map(row => ({ id: Number(row[0]), value: Number(row[1]), date: String(row[2]) }))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  return sheet_('weights').getDataRange().getValues().slice(1).filter(row => row[0] !== '').map(row => ({ id: Number(row[0]), value: Number(row[1]), date: String(row[2]) })).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 }
-
 function addWeight_(data) {
   if (!String(data.date || '').match(/^\d{4}-\d{2}-\d{2}$/)) throw new Error('Weight date is invalid.');
   const target = sheet_('weights');
@@ -140,19 +101,39 @@ function addWeight_(data) {
   target.appendRow([id, Number(data.value), String(data.date)]);
   return { success: true, id: id };
 }
-
 function deleteRowById_(sheetName, id) {
   const target = sheet_(sheetName);
   const values = target.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
-    if (String(values[i][0]) === String(id)) {
-      target.deleteRow(i + 1);
-      return { success: true };
-    }
+    if (String(values[i][0]) === String(id)) { target.deleteRow(i + 1); return { success: true }; }
   }
   throw new Error('Record not found in ' + sheetName + ': ' + id);
 }
 
+/** Receive rapid taps as one browser request and perform them under one lock. */
+function batchOperations_(operations) {
+  if (!Array.isArray(operations)) throw new Error('Batch operations must be an array.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    operations.forEach(operation => {
+      const type = String(operation.type || '').toLowerCase();
+      const data = operation.data || {};
+      if (type === 'entries') addEntry_(data);
+      else if (type === 'deleteentry') deleteRowById_('entries', data.id);
+      else if (type === 'foods') addFood_(data);
+      else if (type === 'deletefood') deleteRowById_('foods', data.id);
+      else if (type === 'weights') addWeight_(data);
+      else if (type === 'deleteweight') deleteRowById_('weights', data.id);
+      else if (type === 'settings') saveSettings_(data);
+      else throw new Error('Unknown batch operation: ' + type);
+    });
+    SpreadsheetApp.flush();
+    return { success: true, processed: operations.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
 function exportData_() {
   return {
     entries: getEntries_().map(entry => ({ date: entry.date, name: entry.name, calories: entry.calories })),
@@ -161,17 +142,28 @@ function exportData_() {
   };
 }
 
+/** Import Android backup in bulk, preserving intentional/legacy blank entry names. */
 function importData_(data) {
-  if (!data || !Array.isArray(data.entries) || !Array.isArray(data.foods) || !Array.isArray(data.weights)) {
-    throw new Error('Backup must contain entries, foods and weights arrays.');
+  if (!data || !Array.isArray(data.entries) || !Array.isArray(data.foods) || !Array.isArray(data.weights)) throw new Error('Backup must contain entries, foods and weights arrays.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    resetAll_();
+    const entries = data.entries.map((entry, index) => {
+      if (!String(entry.date || '').match(/^\d{4}-\d{2}-\d{2}$/)) throw new Error('Entry date is invalid at row ' + (index + 1));
+      return [index + 1, String(entry.date), String(entry.name || ''), Number(entry.calories)];
+    });
+    const foods = data.foods.map((food, index) => [index + 1, String(food.name || ''), Number(food.calories)]);
+    const weights = data.weights.map((weight, index) => [index + 1, Number(weight.value), String(weight.date) ]);
+    if (entries.length) sheet_('entries').getRange(2, 1, entries.length, 4).setValues(entries);
+    if (foods.length) sheet_('foods').getRange(2, 1, foods.length, 3).setValues(foods);
+    if (weights.length) sheet_('weights').getRange(2, 1, weights.length, 3).setValues(weights);
+    SpreadsheetApp.flush();
+    return { success: true, entries: entries.length, foods: foods.length, weights: weights.length };
+  } finally {
+    lock.releaseLock();
   }
-  resetAll_();
-  data.entries.forEach(addEntry_);
-  data.foods.forEach(addFood_);
-  data.weights.forEach(addWeight_);
-  return { success: true };
 }
-
 function resetAll_() {
   ['entries', 'foods', 'weights'].forEach(name => {
     const target = sheet_(name);
@@ -180,12 +172,5 @@ function resetAll_() {
   });
   return { success: true };
 }
-
-function json_(value) {
-  return ContentService.createTextOutput(JSON.stringify(value))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function error_(message) {
-  return json_({ success: false, error: message });
-}
+function json_(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
+function error_(message) { return json_({ success: false, error: message }); }

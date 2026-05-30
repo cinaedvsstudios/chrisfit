@@ -37,6 +37,19 @@ export function render() {
   } else if (screen === 'settings') {
     app.appendChild(renderSettings());
   }
+
+  if (state.sync.message && !['idle', 'saved'].includes(state.sync.phase)) {
+    const syncBadge = document.createElement('div');
+    syncBadge.className = `sync-status sync-${state.sync.phase}`;
+    syncBadge.textContent = state.sync.message;
+    app.appendChild(syncBadge);
+  }
+  if (state.toast) {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${state.toast.type}`;
+    toast.textContent = state.toast.message;
+    app.appendChild(toast);
+  }
 }
 
 /**
@@ -207,7 +220,7 @@ export function renderMain() {
     const row = document.createElement('div');
     row.className = 'entry-row';
     const nameSpan = document.createElement('span');
-    nameSpan.textContent = `${entry.name} (${entry.calories})`;
+    nameSpan.textContent = `${entry.name || '(unnamed)'} (${entry.calories})${entry._pending ? '  ⟳' : ''}`;
     const del = document.createElement('button');
     del.textContent = 'X';
     del.className = 'btn-red';

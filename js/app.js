@@ -1,32 +1,23 @@
-/*
-  app.js
-
-  Main entry point for the ChrisFit web application.  This module
-  performs initial data loading from the backend, registers render
-  callbacks for state and navigation changes and triggers the
-  rendering of the UI.  All presentation logic is delegated to
-  separate modules.  See ui.js for details.
-*/
-
-import { state, subscribe } from './state.js';
+/* ChrisFit Web application entry point. */
+import { subscribe } from './state.js';
 import * as api from './api.js';
 import { onNavigate } from './navigation.js';
 import { render } from './ui.js';
 
 window.addEventListener('DOMContentLoaded', async () => {
-  // Subscribe render() to state and navigation changes.  Whenever
-  // state.notify() or navigate() is invoked the UI will be rebuilt.
   subscribe(render);
   onNavigate(render);
-  // Load initial data from the configured API.  Settings must be
-  // loaded before foods and entries because defaults depend on
-  // settings values.
-  await api.fetchSettings();
-  await api.fetchFoods();
-  await api.fetchEntriesByDate(state.selectedDate);
-  await api.fetchAllEntries();
-  await api.fetchWeights();
-  // Render the initial view.  Without this call nothing appears on
-  // first load because no state change has occurred yet.
   render();
+  try {
+    await api.initialise();
+  } catch (error) {
+    console.error('Initial load failed:', error);
+    const app = document.getElementById('app');
+    if (app) app.innerHTML = '<div class="load-error">Could not load data from Google Sheets. Refresh or check the Apps Script connection.</div>';
+  }
+});
+
+window.addEventListener('online', () => api.flushPending());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') api.flushPending();
 });

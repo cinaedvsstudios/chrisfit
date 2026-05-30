@@ -177,7 +177,7 @@ export function renderSettings() {
         await api.importData(json);
         alert('Imported ✓');
       } catch (e) {
-        alert('Invalid JSON');
+        alert(e && e.message ? e.message : 'Import failed');
       }
     });
     input.click();

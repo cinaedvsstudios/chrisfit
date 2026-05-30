@@ -1,7 +1,4 @@
-/*
-  Active ChrisFit Web configuration.
-  This connects the browser app to your deployed Google Apps Script backend.
-*/
+/* Active ChrisFit Web configuration. */
 export const CONFIG = {
   baseUrl: 'https://script.google.com/macros/s/AKfycbzzW9MH00GHJMhs6MIrctQwC4MpDHi33j0gdQi14lIKI0Z-_IGroEtvIBGFzVuInjXD/exec',
   token: ''
