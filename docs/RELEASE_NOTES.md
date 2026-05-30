@@ -1,3 +1,13 @@
+## v2.4 — History readability and weekly average update — 30 May 2026
+
+- Removed the visible button borders/background around previous/next date emoji arrows.
+- Fixed History day-row text contrast in dark mode.
+- History now opens the month and week containing the date selected on the main screen whenever History is entered.
+- Split expanded weekly History summaries into two cards: existing total values and a new daily-average view.
+- The daily-average card uses recorded days in that week and compares average daily deficit/surplus against the configured daily deficit target.
+- Negative daily-average deficit values are shown in green; surplus values are shown in red.
+- No Google Sheet or Apps Script changes were required for this update.
+
 # ChrisFit Web Release Notes
 
 ## v2.3 — Web customisation and editing update — 30 May 2026

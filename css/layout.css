@@ -11,7 +11,9 @@
 .version-label, .subtle-label, .card-heading p { color: var(--color-text-secondary); font-size: .83rem; margin-top: .2rem; }
 .centered { text-align: center; }
 .date-navigation { display: grid; grid-template-columns: 58px 1fr 58px; gap: .7rem; align-items: stretch; margin-top: 1rem; }
-.date-button { background: var(--color-primary-soft); font-size: 1.55rem; padding: .55rem; }
+.date-button { background: transparent; border: 0; color: var(--color-text-primary); font-size: 1.8rem; padding: .4rem; display: grid; place-items: center; }
+.date-button:hover { transform: scale(1.08); }
+.date-button:active { transform: scale(.96); }
 .selected-date { display: flex; flex-direction: column; gap: .2rem; background: transparent; color: var(--color-text-primary); }
 .selected-date strong { font-size: 1.75rem; line-height: 1.1; }
 .selected-date span { color: var(--color-text-secondary); font-size: 1rem; }

@@ -3,6 +3,7 @@
   .brand-row { align-items: flex-start; }
   .selected-date strong { font-size: 1.6rem; }
   .overview-grid { grid-template-columns: 1fr; }
+  .week-summary-grid { grid-template-columns: 1fr; }
   .history-day-row { grid-template-columns: 1fr 1fr; row-gap: .35rem; }
   .history-day-row .day-label { grid-column: 1 / -1; }
   .weight-row { grid-template-columns: 1fr 1fr; }

@@ -34,10 +34,14 @@ function logo() {
   image.addEventListener('error', () => { image.remove(); const fallback = document.createElement('span'); fallback.className = 'logo-fallback'; fallback.textContent = '🥦'; wrap.appendChild(fallback); });
   wrap.appendChild(image); return wrap;
 }
+let lastRenderedScreen = null;
+
 export function render() {
   const app = document.getElementById('app'); if (!app) return; app.innerHTML = '';
   const active = getActiveScreen();
-  app.appendChild(active === 'settings' ? renderSettings() : active === 'history' ? renderHistory() : renderMain());
+  const enteringHistory = active === 'history' && lastRenderedScreen !== 'history';
+  app.appendChild(active === 'settings' ? renderSettings() : active === 'history' ? renderHistory(enteringHistory) : renderMain());
+  lastRenderedScreen = active;
   if (state.sync.message && !['idle','saved'].includes(state.sync.phase)) { const status = document.createElement('div'); status.className = `sync-status sync-${state.sync.phase}`; status.textContent = state.sync.message; app.appendChild(status); }
   if (state.toast) { const toast = document.createElement('div'); toast.className = `toast toast-${state.toast.type}`; toast.textContent = state.toast.message; app.appendChild(toast); }
 }
@@ -46,7 +50,7 @@ export function renderMain() {
   if (api.isDemoMode()) { const demo = document.createElement('div'); demo.className = 'demo-banner'; demo.textContent = 'DEMO MODE — changes are not saved to Google Sheets'; container.appendChild(demo); }
   const hero = document.createElement('section'); hero.className = 'card hero-card';
   const brand = document.createElement('div'); brand.className = 'brand-row';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.3</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.4</div></div>');
   brand.append(title, button(`${e().emojiSettings} Settings`, 'btn-outline compact-button', () => navigate('settings')));
   const nav = document.createElement('div'); nav.className = 'date-navigation';
   nav.append(button(e().emojiPrevious, 'date-button', () => changeDay(-1), 'Previous day'));
