@@ -65,8 +65,8 @@ Apps Script endpoints and connect them to the web app.
 
 ## 3. Configure the web app
 
-1. Inside the `js/` folder of the web project create a new file
-   `config.js` and export your configuration:
+1. Inside the `js/` folder of the web project open the included
+   `config.js` and enter your deployed endpoint:
 
    ```js
    export const CONFIG = {
@@ -75,8 +75,7 @@ Apps Script endpoints and connect them to the web app.
    };
    ```
 
-2. The app will now read from and write to your Google Sheets.  When
-   `baseUrl` is empty it operates in demo mode using in‑memory data.
+2. The app will now read from and write to your Google Sheets.  When `baseUrl` is empty it operates in visibly labelled demo mode using in-memory data only.
 
 ## 4. Expected data flow
 

@@ -24,9 +24,8 @@ demo mode until you provide a Google Apps Script backend URL in
 
 ## Configuration
 
-Create a copy of `js/config.example.js` named `js/config.js` and fill in
-your Apps Script endpoint and optional token.  Without these values the
-application will fall back to in‑memory storage for testing.  See
+Open the included `js/config.js` and fill in
+your Apps Script endpoint and optional token.  Without these values the application visibly runs in demo mode using in-memory storage only; changes are not saved to Google Sheets.  See
 `docs/GOOGLE_SHEETS_SETUP.md` for instructions on deploying the backend.
 
 ## Folder structure

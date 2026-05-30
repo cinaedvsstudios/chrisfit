@@ -11,6 +11,7 @@
 
 import { state, setState } from './state.js';
 import * as api from './api.js';
+import { isDemoMode } from './api.js';
 import * as dateUtils from './date-utils.js';
 import * as calc from './calculations.js';
 import { getActiveScreen, navigate } from './navigation.js';
@@ -49,6 +50,13 @@ export function render() {
 export function renderMain() {
   const container = document.createElement('div');
   container.className = 'screen main active';
+
+  if (isDemoMode()) {
+    const demoBanner = document.createElement('div');
+    demoBanner.className = 'demo-banner';
+    demoBanner.textContent = 'DEMO MODE – changes are not saved to Google Sheets';
+    container.appendChild(demoBanner);
+  }
 
   // ======================= HEADER =======================
   const header = document.createElement('div');
@@ -106,10 +114,18 @@ export function renderMain() {
   const summary = document.createElement('div');
   summary.className = 'summary';
   const dayStats = calc.calculateDay(state.entries, state.settings);
-  // Weekly stats are computed over entries for the current week.  In
-  // this simple implementation we reuse the day entries as weekly
-  // entries if a proper weekly API call is not available.
-  const weekStats = calc.calculateWeek(state.entries, state.settings, 1);
+  // The Android history screen groups weeks from Monday. For the web build,
+  // the main weekly total is deliberately corrected to use the selected
+  // week's entries up to the selected date rather than repeating one day.
+  const selectedIso = dateUtils.toIso(state.selectedDate);
+  const weekStart = dateUtils.getWeekStart(selectedIso);
+  const selectedDay = new Date(`${selectedIso}T00:00:00`);
+  const monday = new Date(`${weekStart}T00:00:00`);
+  const daysSoFar = Math.floor((selectedDay - monday) / 86400000) + 1;
+  const weekEntries = (state.entriesFull || state.entries).filter(entry =>
+    dateUtils.getWeekStart(entry.date) === weekStart && entry.date <= selectedIso
+  );
+  const weekStats = calc.calculateWeek(weekEntries, state.settings, daysSoFar);
   // Daily column
   const dailyCol = document.createElement('div');
   dailyCol.className = 'summary-column';
@@ -121,11 +137,11 @@ export function renderMain() {
   // Weight/BMI column
   const weightCol = document.createElement('div');
   weightCol.className = 'summary-column';
-  const latestWeight = state.weights.length > 0 ? state.weights[0] : null;
-  if (latestWeight) {
-    const bmi = calc.calculateBMI(latestWeight.value);
+  const weightForDay = state.weights.find(weight => weight.date === selectedIso) || null;
+  if (weightForDay) {
+    const bmi = calc.calculateBMI(weightForDay.value);
     weightCol.innerHTML =
-      `<div>⚖️ ${latestWeight.value} kg</div>` +
+      `<div>⚖️ ${weightForDay.value} kg</div>` +
       `<div>📊 ${bmi ? bmi.toFixed(1) : '--'} BMI</div>`;
   } else {
     weightCol.innerHTML = `<div>⚖️ -- kg</div><div>📊 -- BMI</div>`;

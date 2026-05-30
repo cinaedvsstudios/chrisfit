@@ -11,6 +11,7 @@
 export const state = {
   selectedDate: new Date(),
   entries: [],
+  entriesFull: [],
   foods: [],
   weights: [],
   settings: null,

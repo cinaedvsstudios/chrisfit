@@ -19,6 +19,7 @@ import { navigate } from './navigation.js';
 // expandedWeeks/days the corresponding section is shown.
 const expandedWeeks = new Set();
 const expandedDays = new Set();
+let weightEditMode = false;
 
 /**
  * Build and return the history view DOM fragment.  If all entries
@@ -124,10 +125,25 @@ export function renderHistory() {
   }
 
   // Weight history section
+  const weightTitleRow = document.createElement('div');
+  weightTitleRow.style.display = 'flex';
+  weightTitleRow.style.justifyContent = 'space-between';
+  weightTitleRow.style.alignItems = 'center';
+  weightTitleRow.style.padding = '0.5rem';
   const weightHeader = document.createElement('h3');
   weightHeader.textContent = 'Weight history';
-  weightHeader.style.padding = '0.5rem';
-  container.appendChild(weightHeader);
+  weightHeader.style.margin = '0';
+  const editWeights = document.createElement('button');
+  editWeights.className = 'btn-outline';
+  editWeights.textContent = weightEditMode ? '✅' : '✏️';
+  editWeights.setAttribute('aria-label', weightEditMode ? 'Finish deleting weight entries' : 'Delete weight entries');
+  editWeights.addEventListener('click', () => {
+    weightEditMode = !weightEditMode;
+    navigate('history');
+  });
+  weightTitleRow.appendChild(weightHeader);
+  weightTitleRow.appendChild(editWeights);
+  container.appendChild(weightTitleRow);
   const weightList = document.createElement('div');
   weightList.style.backgroundColor = 'var(--color-weight-bg)';
   weightList.style.padding = '0.5rem';
@@ -137,10 +153,22 @@ export function renderHistory() {
     row.style.justifyContent = 'space-between';
     row.style.padding = '0.25rem 0';
     const bmi = calc.calculateBMI(w.value);
-    row.innerHTML =
-      `<span>📅 ${dateUtils.formatHistoryLabel(w.date)}</span>` +
-      `<span>⚖️ ${w.value}</span>` +
-      `<span>📊 ${bmi ? bmi.toFixed(1) : '--'}</span>`;
+    const dateCell = document.createElement('span');
+    dateCell.textContent = `📅 ${dateUtils.formatHistoryLabel(w.date)}`;
+    const kgCell = document.createElement('span');
+    kgCell.textContent = `⚖️ ${w.value}`;
+    const bmiCell = document.createElement('span');
+    bmiCell.textContent = `📊 ${bmi ? bmi.toFixed(1) : '--'}`;
+    row.appendChild(dateCell);
+    row.appendChild(kgCell);
+    row.appendChild(bmiCell);
+    if (weightEditMode) {
+      const remove = document.createElement('button');
+      remove.className = 'btn-red';
+      remove.textContent = 'X';
+      remove.addEventListener('click', async () => { await api.deleteWeight(w.id); });
+      row.appendChild(remove);
+    }
     weightList.appendChild(row);
   });
   container.appendChild(weightList);

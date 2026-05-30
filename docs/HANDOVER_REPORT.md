@@ -28,8 +28,8 @@ were modified or committed during this process.
   “Reset All Data” function.
 * **Backend integration** using Google Sheets and Apps Script.  A demo
   mode provides in‑memory storage when no backend is configured.
-* **Responsive design** that works on mobile and desktop, and a dark
-  theme implemented via CSS variables.
+* **Responsive design** for mobile and desktop, plus dark-theme CSS overrides.
+* **Configuration/backend corrections**: the browser and Apps Script now use matching action-based requests, and demo mode is visibly marked.
 
 ## Differences from Android
 
@@ -43,30 +43,9 @@ were modified or committed during this process.
 
 ## Testing performed
 
-The application was served locally via `python3 -m http.server` and
-manually tested in both demo mode and with a simulated Apps Script
-backend.  The following scenarios were verified:
+A corrective review found and repaired concrete wiring errors in the generated project: text inputs for entry/food names, configuration loading, Apps Script request routing, unsupported delete requests and the invalid Apps Script response-code call. JavaScript syntax checks and demo data-layer CRUD/export tests were performed locally.
 
-* Loading the app with no data and default settings.
-* Navigating between dates and verifying that entries are scoped to the
-  selected date.
-* Adding intake and burn entries via quick‑add buttons and the custom
-  dialog; repeated taps create multiple entries as in Android.
-* Adding BMR entries with the configured negative calories.
-* Adding and deleting weights; checking BMI updates.
-* Switching to the history screen and expanding weeks/days; verifying
-  weekly and daily summaries and entry lists.
-* Adding, listing and removing food buttons; verifying quick‑add grid
-  updates immediately.
-* Modifying settings and saving; verifying that subsequent calculations
-  use the new targets.
-* Exporting data and confirming that the JSON matches the Android
-  structure.  Importing the same file into a fresh session restores
-  all records.
-* Resetting all data clears the sheets/memory.
-
-No automated tests or deployment steps were executed on the backend as
-per the requirements.
+A real Google Apps Script deployment and live Google Sheets synchronisation test has **not** yet been performed. That requires the project owner to paste/deploy `Code.gs`, enter the deployed `/exec` URL in `js/config.js`, and then perform a small live write/read test before importing real backup data.
 
 ## Next steps
 

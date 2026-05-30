@@ -1,19 +1,10 @@
 /*
-  Configuration for ChrisFit Web.
+  ChrisFit Web configuration template.
 
-  Copy this file to `config.js` and fill in your Google Apps Script endpoint
-  and optional bearer token.  If `baseUrl` remains empty the application
-  operates in demo mode using in-memory storage.
-
-  Example:
-
-    export const CONFIG = {
-      baseUrl: 'https://script.google.com/macros/s/AKfycbyExample/exec',
-      token: 'secret-token-here'
-    };
-
+  Make a copy named `config.js` in this same folder. Paste the deployed
+  Google Apps Script /exec URL into baseUrl after the backend is deployed.
+  Leave token blank unless you set the matching TOKEN in Code.gs.
 */
-
 export const CONFIG = {
   baseUrl: '',
   token: ''

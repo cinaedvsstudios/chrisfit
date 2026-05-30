@@ -16,13 +16,13 @@ import * as api from './api.js';
 // Helper to create a labelled numeric input.  Returns an object with
 // the container element and a reference to the input element.  A
 // default value can be provided which will be assigned to the input.
-function createLabeledInput(labelText, defaultValue = '') {
+function createLabeledInput(labelText, defaultValue = '', type = 'number') {
   const container = document.createElement('div');
   container.className = 'form-group';
   const label = document.createElement('label');
   label.textContent = labelText;
   const input = document.createElement('input');
-  input.type = 'number';
+  input.type = type;
   input.value = defaultValue;
   input.style.width = '100%';
   container.appendChild(label);
@@ -46,7 +46,7 @@ export function showEntryDialog() {
   title.textContent = 'Add Entry';
   modal.appendChild(title);
 
-  const nameGroup = createLabeledInput('Name');
+  const nameGroup = createLabeledInput('Name', '', 'text');
   const calGroup = createLabeledInput('Calories');
   modal.appendChild(nameGroup.container);
   modal.appendChild(calGroup.container);

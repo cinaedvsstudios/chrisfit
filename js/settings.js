@@ -14,13 +14,13 @@ import * as api from './api.js';
 import { navigate } from './navigation.js';
 
 // Helper to create labelled numeric inputs for settings and food
-function createLabeledInput(labelText, defaultValue = '') {
+function createLabeledInput(labelText, defaultValue = '', type = 'number') {
   const container = document.createElement('div');
   container.className = 'form-group';
   const label = document.createElement('label');
   label.textContent = labelText;
   const input = document.createElement('input');
-  input.type = 'number';
+  input.type = type;
   input.value = defaultValue;
   input.style.width = '100%';
   container.appendChild(label);
@@ -95,7 +95,7 @@ export function renderSettings() {
   foodHeader.style.marginTop = '1rem';
   content.appendChild(foodHeader);
   // Inputs for new food
-  const foodNameInput = createLabeledInput('Food Name');
+  const foodNameInput = createLabeledInput('Food Name', '', 'text');
   const foodCalInput = createLabeledInput('Calories');
   content.appendChild(foodNameInput.container);
   content.appendChild(foodCalInput.container);

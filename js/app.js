@@ -24,6 +24,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   await api.fetchSettings();
   await api.fetchFoods();
   await api.fetchEntriesByDate(state.selectedDate);
+  await api.fetchAllEntries();
   await api.fetchWeights();
   // Render the initial view.  Without this call nothing appears on
   // first load because no state change has occurred yet.
