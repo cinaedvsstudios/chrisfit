@@ -100,3 +100,57 @@
   border-radius: 8px;
 }
 .entry-row span { min-width: 0; }
+
+
+/* Settings connection diagnostics. This panel is a temporary but useful
+   support tool while the live Apps Script/Sheets backend is being tested. */
+.settings-content {
+  padding: 1rem;
+  flex: 1;
+  overflow-y: auto;
+}
+.diagnostic-panel {
+  padding: 0.8rem;
+  margin: 0 0 1rem;
+  border: 1px solid var(--color-divider);
+  border-radius: 8px;
+  background: var(--color-summary-bg);
+}
+.diagnostic-panel h3 {
+  margin: 0 0 0.35rem;
+}
+.diagnostic-help, .diagnostic-status, .diagnostic-endpoint, .diagnostic-warning {
+  margin: 0.35rem 0;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+.diagnostic-endpoint {
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+}
+.diagnostic-warning {
+  padding: 0.5rem;
+  margin-top: 0.65rem;
+  color: #8e1b1b;
+  background: #ffebee;
+  border-radius: 6px;
+}
+.diagnostic-output {
+  display: block;
+  width: 100%;
+  min-height: 14rem;
+  margin: 0.65rem 0 0.25rem;
+  padding: 0.55rem;
+  resize: vertical;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: #ffffff;
+  color: #212121;
+  border: 1px solid #bdbdbd;
+  border-radius: 6px;
+}
+.settings-food-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0;
+}

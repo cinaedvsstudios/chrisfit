@@ -25,6 +25,108 @@ export function isDemoMode() {
   return !CONFIG.baseUrl;
 }
 
+
+/**
+ * Return visible, non-secret information about the current connection state.
+ * Used only by the Settings diagnostics panel.
+ */
+export function getConnectionInfo() {
+  return {
+    mode: isDemoMode() ? 'demo' : 'google-apps-script',
+    endpoint: CONFIG.baseUrl || '(not configured)',
+    tokenConfigured: Boolean(CONFIG.token),
+    online: navigator.onLine,
+    pendingChanges: pending.length,
+    syncPhase: state.sync.phase,
+    syncMessage: state.sync.message || '(none)'
+  };
+}
+
+/**
+ * Remove only unsynchronised browser-side operations. This is deliberately
+ * separate from resetAllData(): it does not call the backend and does not
+ * delete anything already stored in Google Sheets.
+ */
+export function discardPendingChanges() {
+  const count = pending.length;
+  if (!count) return 0;
+  pending = [];
+  saveQueue_();
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  renderEffective_();
+  setSync('idle', 0, '');
+  showToast(`${count} unsynced local change${count === 1 ? '' : 's'} discarded`, 'info', 3000);
+  return count;
+}
+
+function debugUrl_(action, params = {}) {
+  const url = new URL(endpoint_(action, params));
+  if (url.searchParams.has('token')) url.searchParams.set('token', '[configured but hidden]');
+  return url.toString();
+}
+
+async function diagnosticRequest_(label, action, options = {}) {
+  const method = options.method || 'GET';
+  const safeUrl = debugUrl_(action);
+  const started = performance.now();
+  const output = [label, `${method} ${safeUrl}`];
+  try {
+    const response = await fetch(endpoint_(action), options);
+    const elapsed = Math.round(performance.now() - started);
+    const body = await response.text();
+    output.push(`HTTP result: ${response.status} ${response.statusText || ''}`.trim());
+    output.push(`Elapsed: ${elapsed} ms`);
+    output.push(`Content-Type: ${response.headers.get('content-type') || '(not supplied)'}`);
+    output.push(`Response body: ${body.slice(0, 1200) || '(empty)'}`);
+  } catch (error) {
+    const elapsed = Math.round(performance.now() - started);
+    output.push(`FAILED after ${elapsed} ms`);
+    output.push(`${error && error.name ? error.name : 'Error'}: ${error && error.message ? error.message : String(error)}`);
+    output.push('A browser “Failed to fetch” result commonly indicates CORS, a redirect/access restriction, or a network failure before JavaScript could read the response.');
+  }
+  return output.join('\n');
+}
+
+/**
+ * Perform non-destructive connection diagnostics. The POST check submits an
+ * empty batch, which exercises the failing sync route but creates no records.
+ */
+export async function runConnectionDebugTest() {
+  const info = getConnectionInfo();
+  const lines = [
+    'ChrisFit Connection Debug Report',
+    `Generated: ${new Date().toISOString()}`,
+    `App page: ${window.location.href}`,
+    `Mode: ${info.mode}`,
+    `Endpoint: ${info.endpoint}`,
+    `Token configured: ${info.tokenConfigured ? 'yes (value hidden)' : 'no'}`,
+    `Browser online: ${info.online ? 'yes' : 'no'}`,
+    `Pending local changes: ${info.pendingChanges}`,
+    `Visible sync state: ${info.syncPhase} — ${info.syncMessage}`
+  ];
+
+  if (isDemoMode()) {
+    lines.push('', 'TEST NOT RUN: the app is configured for demo mode and has no Apps Script endpoint.');
+    return lines.join('\n');
+  }
+
+  lines.push('', await diagnosticRequest_('TEST 1 — Read settings', 'settings'));
+  lines.push('', await diagnosticRequest_('TEST 2 — Read entries', 'entries'));
+  lines.push('', await diagnosticRequest_(
+    'TEST 3 — Sync route check (empty batch; must not create any rows)',
+    'batch',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ operations: [] })
+    }
+  ));
+  return lines.join('\n');
+}
+
 function readQueue_() {
   try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch (_) { return []; }
 }
