@@ -1,86 +1,97 @@
-/*
-  Layout rules for the primary screens.
-
-  The main screen is divided vertically into a header (day and summary), an
-  action grid and a scrolling entry list.  A fixed bottom bar hosts the
-  navigation buttons.  History and settings screens reuse similar concepts
-  but are hidden when not active.
-*/
-
-#app {
+#app { min-height: 100vh; }
+.screen { display: none; }
+.screen.active { display: flex; flex-direction: column; }
+.page {
+  gap: 0.9rem;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0.9rem 0.9rem 5.5rem;
+}
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-card);
+  padding: 1rem;
+  box-shadow: 0 2px 10px var(--color-shadow);
+}
+.brand-row, .card-heading, .section-header {
   display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-.screen {
-  flex: 1;
-  display: none;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.screen.active {
-  display: flex;
-}
-
-.header {
-  background-color: var(--color-header-bg);
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--color-divider);
-}
-
-.header .date-row {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-}
-
-.header .summary {
-  margin-top: 0.5rem;
-  background-color: var(--color-summary-bg);
-  padding: 0.5rem;
-  border-radius: 4px;
-  display: flex;
   justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.summary-column {
-  display: flex;
-  flex-direction: column;
-  margin-right: 1rem;
-}
-
-.action-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
-  padding: 0.5rem;
-  overflow-y: auto;
-  max-height: 40vh;
-}
-
-.entries-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem 1rem;
-}
-
-.entries-list .entry-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--color-divider);
-}
-
-.bottom-bar {
-  padding: 0.5rem;
-  border-top: 1px solid var(--color-divider);
-  display: flex;
-  justify-content: center;
   gap: 1rem;
-  background-color: var(--color-header-bg);
 }
+.version-label, .subtle-label, .card-heading p {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  margin-top: 0.2rem;
+}
+.date-navigation {
+  display: grid;
+  grid-template-columns: 54px 1fr 54px;
+  gap: 0.6rem;
+  align-items: stretch;
+  margin-top: 1rem;
+}
+.date-button {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 1.5rem;
+}
+.selected-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: transparent;
+  color: var(--color-text-primary);
+}
+.selected-date strong { font-size: 1.3rem; }
+.selected-date span { color: var(--color-text-secondary); }
+.hero-card .subtle-label { text-align: center; margin-top: 0.65rem; }
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.82fr;
+  gap: 0.75rem;
+}
+.summary-card h2 { margin-bottom: 0.65rem; }
+.summary-metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.42rem 0;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-divider);
+}
+.summary-metric:last-child { border-bottom: 0; }
+.summary-metric strong { color: var(--color-text-primary); }
+.summary-metric.on-target strong { color: var(--color-green); }
+.weight-value { font-weight: 700; font-size: 1.35rem; margin: 0.5rem 0 0.2rem; }
+.full-button { width: 100%; margin-top: 0.8rem; }
+.primary-actions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin: 1rem 0 0.8rem;
+}
+.primary-actions button { flex: 1 1 150px; }
+.food-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.55rem;
+}
+.entries-card .card-heading { margin-bottom: 0.7rem; }
+.entries-list { display: flex; flex-direction: column; }
+.entry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--color-divider);
+}
+.entry-identity { display: flex; flex-direction: column; gap: 0.22rem; min-width: 0; }
+.entry-identity strong { overflow-wrap: anywhere; }
+.entry-food, .entry-burn { font-size: 0.78rem; font-weight: 600; }
+.entry-food { color: var(--color-blue); }
+.entry-burn { color: var(--color-red); }
+.entry-amount { font-variant-numeric: tabular-nums; font-weight: 700; }
+.empty-state { color: var(--color-text-secondary); padding: 0.8rem 0; }

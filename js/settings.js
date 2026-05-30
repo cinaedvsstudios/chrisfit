@@ -9,6 +9,7 @@
 import { state } from './state.js';
 import * as api from './api.js';
 import { navigate } from './navigation.js';
+import { getThemePreference, setThemePreference } from './theme.js';
 
 function createLabeledInput(labelText, defaultValue = '', type = 'number') {
   const container = document.createElement('div');
@@ -144,14 +145,41 @@ export function renderSettings() {
 
   content.appendChild(createConnectionDiagnostics());
 
+  const appearancePanel = document.createElement('section');
+  appearancePanel.className = 'settings-card';
+  const appearanceHeader = document.createElement('h3');
+  appearanceHeader.textContent = 'Appearance';
+  const themeLabel = document.createElement('label');
+  themeLabel.className = 'form-group';
+  const themeText = document.createElement('span');
+  themeText.textContent = 'Theme';
+  const themeSelect = document.createElement('select');
+  ['system', 'light', 'dark'].forEach(value => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value.charAt(0).toUpperCase() + value.slice(1);
+    themeSelect.appendChild(option);
+  });
+  themeSelect.value = getThemePreference();
+  themeSelect.addEventListener('change', () => setThemePreference(themeSelect.value));
+  themeLabel.append(themeText, themeSelect);
+  appearancePanel.append(appearanceHeader, themeLabel);
+  content.appendChild(appearancePanel);
+
+  const targetsPanel = document.createElement('section');
+  targetsPanel.className = 'settings-card';
   const targetsHeader = document.createElement('h3');
   targetsHeader.textContent = 'Targets';
-  content.appendChild(targetsHeader);
+  targetsPanel.appendChild(targetsHeader);
 
-  const calInput = createLabeledInput('Daily Calories', state.settings?.dailyCalories ?? 1500);
-  const deficitInput = createLabeledInput('Daily Deficit', state.settings?.dailyDeficit ?? 500);
+  const calInput = createLabeledInput('Daily Food Target', state.settings?.dailyCalories ?? 1500);
+  const deficitInput = createLabeledInput('Daily Deficit Target', state.settings?.dailyDeficit ?? 500);
   const bmrInput = createLabeledInput('BMR', state.settings?.bmr ?? 2000);
-  content.append(calInput.container, deficitInput.container, bmrInput.container);
+  targetsPanel.append(calInput.container, deficitInput.container, bmrInput.container);
+  const targetNote = document.createElement('p');
+  targetNote.className = 'settings-note';
+  targetNote.textContent = 'Daily Burn Target will be added in the next data-schema upgrade; this update does not alter your Google Sheet structure.';
+  targetsPanel.appendChild(targetNote);
 
   const saveBtn = fullWidthButton('Save Settings');
   saveBtn.addEventListener('click', async () => {
@@ -163,15 +191,18 @@ export function renderSettings() {
     await api.saveSettings(settings);
     alert('Settings queued to save');
   });
-  content.appendChild(saveBtn);
+  targetsPanel.appendChild(saveBtn);
+  content.appendChild(targetsPanel);
 
+  const foodsPanel = document.createElement('section');
+  foodsPanel.className = 'settings-card';
   const foodHeader = document.createElement('h3');
   foodHeader.textContent = 'Food Buttons';
   foodHeader.style.marginTop = '1rem';
-  content.appendChild(foodHeader);
+  foodsPanel.appendChild(foodHeader);
   const foodNameInput = createLabeledInput('Food Name', '', 'text');
   const foodCalInput = createLabeledInput('Calories');
-  content.append(foodNameInput.container, foodCalInput.container);
+  foodsPanel.append(foodNameInput.container, foodCalInput.container);
   const addFoodBtn = fullWidthButton('Add Food');
   addFoodBtn.addEventListener('click', async () => {
     const name = foodNameInput.input.value.trim();
@@ -184,7 +215,7 @@ export function renderSettings() {
     foodNameInput.input.value = '';
     foodCalInput.input.value = '';
   });
-  content.appendChild(addFoodBtn);
+  foodsPanel.appendChild(addFoodBtn);
 
   state.foods.forEach(food => {
     const row = document.createElement('div');
@@ -197,13 +228,16 @@ export function renderSettings() {
     del.className = 'btn-red';
     del.addEventListener('click', async () => api.deleteFood(food.id));
     row.append(label, del);
-    content.appendChild(row);
+    foodsPanel.appendChild(row);
   });
 
+  content.appendChild(foodsPanel);
+
+  const backupPanel = document.createElement('section');
+  backupPanel.className = 'settings-card';
   const backupHeader = document.createElement('h3');
-  backupHeader.textContent = 'Backup';
-  backupHeader.style.marginTop = '1rem';
-  content.appendChild(backupHeader);
+  backupHeader.textContent = 'Backup & Data';
+  backupPanel.appendChild(backupHeader);
 
   const exportBtn = fullWidthButton('📤 Export Data');
   exportBtn.addEventListener('click', async () => {
@@ -218,7 +252,7 @@ export function renderSettings() {
     link.remove();
     URL.revokeObjectURL(url);
   });
-  content.appendChild(exportBtn);
+  backupPanel.appendChild(exportBtn);
 
   const importBtn = fullWidthButton('📥 Import Data');
   importBtn.addEventListener('click', async () => {
@@ -229,7 +263,13 @@ export function renderSettings() {
       const file = input.files[0];
       if (!file) return;
       try {
-        await api.importData(JSON.parse(await file.text()));
+        const data = JSON.parse(await file.text());
+        const entryCount = Array.isArray(data.entries) ? data.entries.length : 0;
+        const foodCount = Array.isArray(data.foods) ? data.foods.length : 0;
+        const weightCount = Array.isArray(data.weights) ? data.weights.length : 0;
+        const confirmed = confirm(`This will replace the current sheet data with ${entryCount} entries, ${foodCount} saved foods and ${weightCount} weights. Continue?`);
+        if (!confirmed) return;
+        await api.importData(data);
         alert('Imported ✓');
       } catch (error) {
         alert(error && error.message ? error.message : 'Import failed');
@@ -237,13 +277,19 @@ export function renderSettings() {
     });
     input.click();
   });
-  content.appendChild(importBtn);
+  backupPanel.appendChild(importBtn);
 
   const resetBtn = fullWidthButton('⚠ Reset All Data', 'btn-red');
   resetBtn.addEventListener('click', async () => {
     if (confirm('Delete all data?')) await api.resetAllData();
   });
-  content.appendChild(resetBtn);
+  backupPanel.appendChild(resetBtn);
+  content.appendChild(backupPanel);
+
+  const infoPanel = document.createElement('section');
+  infoPanel.className = 'settings-card release-notes';
+  infoPanel.innerHTML = `<h3>ℹ️ Release Notes</h3><p><strong>ChrisFit Web preview · v2.1</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><p>Personal food, burn and weight tracking with fast reusable entry buttons. Food is stored as positive calories; burn is stored as negative calories. Dates are stored internally as yyyy-MM-dd and displayed as DD-MM-YYYY.</p><h4>This update</h4><ul><li>Cleaner card-based interface and labeled summaries.</li><li>Add Food and Add Burn flows with required entry names.</li><li>Fixed seven-day weekly targets and readable history hierarchy.</li><li>Mobile swipe date navigation and theme selector.</li><li>Safe backup import confirmation and retained connection debugger.</li></ul>`;
+  content.appendChild(infoPanel);
 
   container.appendChild(content);
   return container;

@@ -32,3 +32,27 @@ extend individual screens without touching unrelated logic.
 
 Refer to `docs/HANDOVER_REPORT.md` for known limitations and possible
 future enhancements.
+### Connection Diagnostic Patch — 30 May 2026
+
+- Added a non-destructive **Connection Debug** panel inside Settings.
+- Added read tests for settings and entries plus an empty-batch POST test of the sync route; the batch contains no record changes and creates no rows.
+- Added **Copy Debug Report** so connection failures can be pasted into support/chat without relying on hidden browser console logs.
+- Added **Discard Unsynced Local Changes** so failed test entries held in browser storage can be removed without altering Google Sheets data.
+
+
+## v2.1 Preview UI Update — 30 May 2026
+
+- Replaced the raw Android-like web layout with card-based responsive sections.
+- Changed main entry actions to **Add Food** and **Add Burn**.
+- New entries can no longer be saved without a name; historical blank Android-import entries remain visible as imported unnamed items.
+- Visible and typed dates use `DD-MM-YYYY`; internal data storage remains `yyyy-MM-dd`.
+- Daily and weekly summary values are labeled as Food, Burn and Deficit.
+- Weekly food and deficit targets are calculated as fixed daily target × 7.
+- Rebuilt History into a Month → Week → Day hierarchy with readable totals and weight-change estimate text.
+- Added mobile swipe navigation between days.
+- Added System / Light / Dark appearance setting stored locally in the browser.
+- Added an import confirmation showing entry/food/weight counts before replacing sheet data.
+- Moved sync/toast messages above the bottom controls so they no longer cover Settings.
+- Kept Connection Debug available while live Google Sheets migration is being verified.
+
+Deferred deliberately: Daily Burn Target (requires a data schema/backend update), editing entries, automatic BMR, default Daily Burn and bulk add.

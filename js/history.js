@@ -1,185 +1,172 @@
-/*
-  history.js
-
-  Rendering for the history screen.  The history view groups all
-  entries by week and day and allows the user to expand or collapse
-  each section.  It also displays the entire weight history and
-  provides a back button to return to the main screen.  Internally
-  the module caches which weeks and days are expanded using two
-  Sets so that state persists across re-renders.
-*/
-
-import { state, setState } from './state.js';
+import { state } from './state.js';
 import * as api from './api.js';
 import * as dateUtils from './date-utils.js';
 import * as calc from './calculations.js';
 import { navigate } from './navigation.js';
 
-// Expanded state caches.  When a week or day key is present in
-// expandedWeeks/days the corresponding section is shown.
-const expandedWeeks = new Set();
-const expandedDays = new Set();
+const openMonths = new Set();
+const openWeeks = new Set();
+const openDays = new Set();
+let defaultsApplied = false;
 let weightEditMode = false;
 
-/**
- * Build and return the history view DOM fragment.  If all entries
- * haven't been loaded yet a fetch is triggered and a loading message
- * is shown.  Once data is available it is grouped by week and day
- * and rendered hierarchically with expandable sections.
- *
- * @returns {HTMLElement}
- */
-export function renderHistory() {
-  const container = document.createElement('div');
-  container.className = 'screen history active';
+function toggle(set, key) {
+  set.has(key) ? set.delete(key) : set.add(key);
+  navigate('history');
+}
 
-  // Header
-  const header = document.createElement('div');
-  header.className = 'header';
-  const title = document.createElement('h2');
-  title.textContent = 'History';
-  header.appendChild(title);
+function entriesByMonth(entries) {
+  const result = {};
+  entries.forEach(entry => {
+    const month = dateUtils.getMonthKey(entry.date);
+    const week = dateUtils.getWeekStart(entry.date);
+    result[month] ||= {};
+    result[month][week] ||= [];
+    result[month][week].push(entry);
+  });
+  return result;
+}
+
+function summaryRows(stats, weekly = false) {
+  const rows = document.createElement('div');
+  rows.className = 'history-summary';
+  const values = [
+    ['Total Food', stats.intake, weekly ? stats.weeklyFoodTarget : undefined],
+    ['Total Burn', stats.burn, undefined],
+    ['Total Deficit', stats.net, weekly ? `-${stats.weeklyDeficitTarget}` : undefined]
+  ];
+  values.forEach(([label, value, target]) => {
+    const row = document.createElement('div');
+    row.innerHTML = `<span>${label}</span><strong>${target === undefined ? value : `${value} / ${target}`}</strong>`;
+    rows.appendChild(row);
+  });
+  if (weekly) {
+    const estimate = document.createElement('p');
+    estimate.className = 'weight-estimate';
+    estimate.textContent = calc.estimateWeightText(stats.net);
+    rows.appendChild(estimate);
+  }
+  return rows;
+}
+
+export function renderHistory() {
+  const container = document.createElement('main');
+  container.className = 'screen history active page';
+
+  const header = document.createElement('section');
+  header.className = 'card section-header';
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'btn-outline';
+  back.textContent = '← Back';
+  back.addEventListener('click', () => navigate('main'));
+  const heading = document.createElement('div');
+  heading.innerHTML = '<h1>History</h1><p class="subtle-label">Food, burn and weight over time</p>';
+  header.append(back, heading);
   container.appendChild(header);
 
-  // List container for weekly entries
-  const historyList = document.createElement('div');
-  historyList.className = 'history-list';
-  container.appendChild(historyList);
-
-  // Ensure all entries are loaded.  If not available yet, fetch and
-  // request a re-render when done.  A loading placeholder is
-  // displayed until the data arrives.
   const allEntries = state.entriesFull || [];
-  if (!state.entriesFull) {
-    // Kick off async load.  When complete update state to trigger
-    // subscribers and thus a re-render.
-    api.fetchAllEntries().then(entries => {
-      setState('entriesFull', entries);
-    });
-    historyList.textContent = 'Loading...';
-  } else {
-    // Group entries by week start date
-    const groups = {};
-    allEntries.forEach(e => {
-      const week = dateUtils.getWeekStart(e.date);
-      if (!groups[week]) groups[week] = [];
-      groups[week].push(e);
-    });
-    // Sort weeks descending (most recent first)
-    const sortedWeeks = Object.keys(groups).sort((a, b) => b.localeCompare(a));
-    sortedWeeks.forEach(week => {
-      // Week header row
-      const weekHeader = document.createElement('div');
-      weekHeader.className = 'history-week';
-      const expanded = expandedWeeks.has(week);
-      weekHeader.textContent = (expanded ? '➖ ' : '➕ ') + week;
-      weekHeader.addEventListener('click', () => {
-        if (expanded) expandedWeeks.delete(week); else expandedWeeks.add(week);
-        // Trigger re-render via navigation change.  Using navigate to
-        // same screen ensures subscribers run without altering state.
-        navigate('history');
-      });
-      historyList.appendChild(weekHeader);
-      // If expanded render days
-      if (expanded) {
-        const daysGroup = {};
-        groups[week].forEach(e => {
-          if (!daysGroup[e.date]) daysGroup[e.date] = [];
-          daysGroup[e.date].push(e);
-        });
-        const dayKeys = Object.keys(daysGroup).sort((a, b) => b.localeCompare(a));
-        dayKeys.forEach(dateStr => {
-          const key = `${week}:${dateStr}`;
-          const dayExpanded = expandedDays.has(key);
-          const dayStats = calc.calculateDay(daysGroup[dateStr], state.settings);
-          const dayHeader = document.createElement('div');
-          dayHeader.className = 'history-day';
-          dayHeader.textContent = (dayExpanded ? '➖ ' : '➕ ') +
-            `${dateUtils.formatHistoryLabel(dateStr)}  🥦 ${dayStats.intake}   🔥 ${dayStats.burn}   ⚖️ ${dayStats.net}`;
-          dayHeader.addEventListener('click', () => {
-            if (dayExpanded) expandedDays.delete(key); else expandedDays.add(key);
-            navigate('history');
-          });
-          historyList.appendChild(dayHeader);
-          if (dayExpanded) {
-            const list = document.createElement('div');
-            list.className = 'history-entries';
-            daysGroup[dateStr].forEach(e => {
-              const div = document.createElement('div');
-              const isFood = e.calories > 0;
-              div.textContent = `${isFood ? '🥦' : '🔥'} ${e.name} (${e.calories})`;
-              list.appendChild(div);
-            });
-            historyList.appendChild(list);
-          }
-        });
-        // Week summary row
-        const weekStats = calc.calculateDay(groups[week], state.settings);
-        const sumDiv = document.createElement('div');
-        sumDiv.className = 'history-day';
-        sumDiv.style.backgroundColor = 'var(--color-weight-row-alt)';
-        sumDiv.textContent = `   🥦 ${weekStats.intake}   🔥 ${weekStats.burn}   ⚖️ ${weekStats.net}`;
-        historyList.appendChild(sumDiv);
-      }
-    });
+  const grouped = entriesByMonth(allEntries);
+  const todayMonth = dateUtils.getMonthKey(dateUtils.toIso(new Date()));
+  const currentWeek = dateUtils.getWeekStart(new Date());
+  const selectedWeek = dateUtils.getWeekStart(state.selectedDate);
+  if (!defaultsApplied) {
+    openMonths.add(todayMonth);
+    openMonths.add(dateUtils.getMonthKey(dateUtils.toIso(state.selectedDate)));
+    openWeeks.add(currentWeek);
+    openWeeks.add(selectedWeek);
+    defaultsApplied = true;
   }
 
-  // Weight history section
-  const weightTitleRow = document.createElement('div');
-  weightTitleRow.style.display = 'flex';
-  weightTitleRow.style.justifyContent = 'space-between';
-  weightTitleRow.style.alignItems = 'center';
-  weightTitleRow.style.padding = '0.5rem';
-  const weightHeader = document.createElement('h3');
-  weightHeader.textContent = 'Weight history';
-  weightHeader.style.margin = '0';
-  const editWeights = document.createElement('button');
-  editWeights.className = 'btn-outline';
-  editWeights.textContent = weightEditMode ? '✅' : '✏️';
-  editWeights.setAttribute('aria-label', weightEditMode ? 'Finish deleting weight entries' : 'Delete weight entries');
-  editWeights.addEventListener('click', () => {
-    weightEditMode = !weightEditMode;
-    navigate('history');
+  const foodHistory = document.createElement('section');
+  foodHistory.className = 'history-stack';
+  if (!Object.keys(grouped).length) {
+    foodHistory.innerHTML = '<section class="card"><p class="empty-state">No food or burn history yet.</p></section>';
+  }
+
+  Object.keys(grouped).sort().reverse().forEach(month => {
+    const monthCard = document.createElement('section');
+    monthCard.className = 'card history-month';
+    const monthHeader = document.createElement('button');
+    monthHeader.type = 'button';
+    monthHeader.className = 'history-toggle month-toggle';
+    monthHeader.innerHTML = `<strong>${dateUtils.formatMonthHeading(month)}</strong><span>${openMonths.has(month) ? '−' : '+'}</span>`;
+    monthHeader.addEventListener('click', () => toggle(openMonths, month));
+    monthCard.appendChild(monthHeader);
+
+    if (openMonths.has(month)) {
+      Object.keys(grouped[month]).sort().reverse().forEach(week => {
+        const weekEntries = grouped[month][week];
+        const weekStats = calc.calculateWeek(weekEntries, state.settings);
+        const weekWrap = document.createElement('div');
+        weekWrap.className = 'week-block';
+        const weekHeader = document.createElement('button');
+        weekHeader.type = 'button';
+        weekHeader.className = 'history-toggle week-toggle';
+        weekHeader.innerHTML = `<span>Week ${dateUtils.formatDisplay(week)} – ${dateUtils.formatDisplay(dateUtils.getWeekEnd(week))}</span><strong>${openWeeks.has(week) ? '−' : '+'}</strong>`;
+        weekHeader.addEventListener('click', () => toggle(openWeeks, week));
+        weekWrap.appendChild(weekHeader);
+
+        if (openWeeks.has(week)) {
+          weekWrap.appendChild(summaryRows(weekStats, true));
+          const byDay = {};
+          weekEntries.forEach(entry => { (byDay[entry.date] ||= []).push(entry); });
+          Object.keys(byDay).sort().reverse().forEach(day => {
+            const dayKey = `${week}:${day}`;
+            const dayStats = calc.calculateDay(byDay[day], state.settings);
+            const dayHeader = document.createElement('button');
+            dayHeader.type = 'button';
+            dayHeader.className = 'history-day-row';
+            dayHeader.innerHTML = `<span class="day-label">${dateUtils.formatHistoryLabel(day)}</span><span>Food <strong>${dayStats.intake}</strong></span><span>Burn <strong>${dayStats.burn}</strong></span><span>Deficit <strong>${dayStats.net}</strong></span><b>${openDays.has(dayKey) ? '−' : '+'}</b>`;
+            dayHeader.addEventListener('click', () => toggle(openDays, dayKey));
+            weekWrap.appendChild(dayHeader);
+            if (openDays.has(dayKey)) {
+              const items = document.createElement('div');
+              items.className = 'history-entries';
+              byDay[day].forEach(entry => {
+                const row = document.createElement('div');
+                row.className = 'history-entry';
+                row.innerHTML = `<span>${entry.name || 'Unnamed entry (imported)'}</span><strong>${entry.calories > 0 ? '+' : ''}${entry.calories}</strong>`;
+                items.appendChild(row);
+              });
+              weekWrap.appendChild(items);
+            }
+          });
+        }
+        monthCard.appendChild(weekWrap);
+      });
+    }
+    foodHistory.appendChild(monthCard);
   });
-  weightTitleRow.appendChild(weightHeader);
-  weightTitleRow.appendChild(editWeights);
-  container.appendChild(weightTitleRow);
-  const weightList = document.createElement('div');
-  weightList.style.backgroundColor = 'var(--color-weight-bg)';
-  weightList.style.padding = '0.5rem';
-  state.weights.forEach(w => {
+  container.appendChild(foodHistory);
+
+  const weights = document.createElement('section');
+  weights.className = 'card weight-history';
+  const weightHeading = document.createElement('div');
+  weightHeading.className = 'card-heading';
+  weightHeading.innerHTML = '<div><h2>Weight History</h2><p>Recorded weights and BMI</p></div>';
+  const edit = document.createElement('button');
+  edit.type = 'button';
+  edit.className = 'btn-outline compact-button';
+  edit.textContent = weightEditMode ? 'Done' : 'Edit';
+  edit.addEventListener('click', () => { weightEditMode = !weightEditMode; navigate('history'); });
+  weightHeading.appendChild(edit);
+  weights.appendChild(weightHeading);
+  if (!state.weights.length) weights.innerHTML += '<p class="empty-state">No weights recorded.</p>';
+  state.weights.forEach(weight => {
     const row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.justifyContent = 'space-between';
-    row.style.padding = '0.25rem 0';
-    const bmi = calc.calculateBMI(w.value);
-    const dateCell = document.createElement('span');
-    dateCell.textContent = `📅 ${dateUtils.formatHistoryLabel(w.date)}`;
-    const kgCell = document.createElement('span');
-    kgCell.textContent = `⚖️ ${w.value}`;
-    const bmiCell = document.createElement('span');
-    bmiCell.textContent = `📊 ${bmi ? bmi.toFixed(1) : '--'}`;
-    row.appendChild(dateCell);
-    row.appendChild(kgCell);
-    row.appendChild(bmiCell);
+    row.className = 'weight-row';
+    row.innerHTML = `<span>${dateUtils.formatDisplay(weight.date)}</span><strong>${weight.value} kg</strong><span>${calc.calculateBMI(weight.value).toFixed(1)} BMI</span>`;
     if (weightEditMode) {
       const remove = document.createElement('button');
-      remove.className = 'btn-red';
-      remove.textContent = 'X';
-      remove.addEventListener('click', async () => { await api.deleteWeight(w.id); });
+      remove.type = 'button';
+      remove.className = 'btn-text-danger';
+      remove.textContent = 'Delete';
+      remove.addEventListener('click', () => api.deleteWeight(weight.id));
       row.appendChild(remove);
     }
-    weightList.appendChild(row);
+    weights.appendChild(row);
   });
-  container.appendChild(weightList);
-
-  // Back button
-  const backBtn = document.createElement('button');
-  backBtn.textContent = '⬅ Back';
-  backBtn.className = 'btn-outline';
-  backBtn.style.margin = '1rem auto';
-  backBtn.addEventListener('click', () => navigate('main'));
-  container.appendChild(backBtn);
-
+  container.appendChild(weights);
   return container;
 }

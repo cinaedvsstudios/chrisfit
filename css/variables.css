@@ -1,24 +1,16 @@
-/*
-  CSS variables for ChrisFit Web.
-
-  These variables mirror the colour palette used by the Android version of
-  ChrisFit.  Defining them in one place makes it trivial to tweak the look
-  and feel globally or provide a dark mode override.  See css/dark-mode.css
-  for the dark theme variant.
-*/
-
 :root {
-  --color-divider: #89e0d4;
+  --color-background: #f5f7f9;
+  --color-surface: #ffffff;
+  --color-surface-soft: #eef5f4;
+  --color-divider: #d8e5e3;
+  --color-primary: #087f74;
+  --color-primary-soft: #e2f3f1;
   --color-green: #2e7d32;
   --color-red: #c62828;
   --color-blue: #1976d2;
   --color-purple: #6a1b9a;
-  --color-summary-bg: #eaeaea;
-  --color-weight-bg: #d0ecff;
-  --color-weight-header: #89e0d4;
-  --color-weight-row-alt: #d7ccc8;
-  --color-header-bg: #ffffff;
-  --color-text-primary: #000000;
-  --color-text-secondary: #444444;
-  --color-background: #fefefe;
+  --color-text-primary: #152327;
+  --color-text-secondary: #627379;
+  --color-shadow: rgba(17, 38, 42, 0.07);
+  --radius-card: 16px;
 }

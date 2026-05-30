@@ -1,35 +1,59 @@
-/*
-  Styles specific to the history screen.
-
-  The history view groups entries by week then by day.  Tapping a week header
-  expands or collapses the days within.  Tapping a day header shows or hides
-  the individual entries.  Colours largely reuse the summary palette.
-*/
-
-.history-list {
-  flex: 1;
-  overflow-y: auto;
+.section-header { justify-content: flex-start; }
+.history-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+.history-month { padding: 0; overflow: hidden; }
+.history-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  text-align: left;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-primary);
 }
-
-.history-week {
-  padding: 0.5rem;
-  background-color: var(--color-weight-header);
-  cursor: pointer;
-  margin-top: 0.25rem;
+.month-toggle {
+  padding: 1rem;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
-
-.history-week + .history-week-content {
-  padding-left: 0.5rem;
+.week-block { border-top: 1px solid var(--color-divider); }
+.week-toggle { padding: 0.8rem 1rem; font-weight: 600; }
+.history-summary {
+  margin: 0 1rem 0.7rem;
+  background: var(--color-surface-soft);
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
 }
-
-.history-day {
-  padding: 0.5rem;
-  background-color: #f5f5f5;
-  cursor: pointer;
+.history-summary > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.22rem 0;
+  font-size: 0.9rem;
+}
+.weight-estimate {
+  margin-top: 0.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+}
+.history-day-row {
+  width: calc(100% - 2rem);
+  margin: 0.32rem 1rem;
+  padding: 0.62rem;
+  display: grid;
+  grid-template-columns: minmax(150px, 1.6fr) repeat(3, minmax(86px, 1fr)) 20px;
+  gap: 0.4rem;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+}
+.history-day-row span:not(.day-label) { color: var(--color-text-secondary); font-size: 0.84rem; }
+.history-entries { margin: 0 1rem 0.7rem; padding-left: 0.8rem; border-left: 2px solid var(--color-primary-soft); }
+.history-entry, .weight-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
   border-bottom: 1px solid var(--color-divider);
 }
-
-.history-entries {
-  padding-left: 1rem;
-  margin-bottom: 0.5rem;
-}
+.weight-history .card-heading { margin-bottom: 0.65rem; }
+.weight-row { align-items: center; }

@@ -1,10 +1,12 @@
-/* ChrisFit Web application entry point. */
 import { subscribe } from './state.js';
 import * as api from './api.js';
 import { onNavigate } from './navigation.js';
 import { render } from './ui.js';
+import { applyTheme, registerSystemThemeListener } from './theme.js';
 
 window.addEventListener('DOMContentLoaded', async () => {
+  applyTheme();
+  registerSystemThemeListener();
   subscribe(render);
   onNavigate(render);
   render();

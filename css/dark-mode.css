@@ -1,17 +1,14 @@
-/*
-  Dark mode overrides.  When the <body> element has the class `dark`
-  these variables swap out the light palette for darker values.  Users can
-  toggle dark mode via the settings screen or by their system preference.
-*/
-
 body.dark {
-  --color-background: #121212;
-  --color-header-bg: #1e1e1e;
-  --color-summary-bg: #1e1e1e;
-  --color-weight-bg: #1d2939;
-  --color-weight-header: #2a3b4c;
-  --color-weight-row-alt: #263340;
-  --color-text-primary: #f5f5f5;
-  --color-text-secondary: #cccccc;
-  --color-divider: #444f5a;
+  --color-background: #0f171a;
+  --color-surface: #192428;
+  --color-surface-soft: #213238;
+  --color-divider: #31454b;
+  --color-primary: #71d5c9;
+  --color-primary-soft: #173d3a;
+  --color-text-primary: #f1f5f5;
+  --color-text-secondary: #b3c2c5;
+  --color-shadow: rgba(0,0,0,0.2);
+}
+body.dark input, body.dark select, body.dark textarea {
+  background: #132024;
 }

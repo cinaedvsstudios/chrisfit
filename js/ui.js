@@ -1,14 +1,3 @@
-/*
-  ui.js
-
-  Top‑level UI rendering module.  Provides functions to render the
-  appropriate screen based on the current navigation state and to
-  assemble the main screen.  Uses modular helpers from other files
-  for history, settings and dialogs.  All DOM manipulation and
-  element creation related to the UI lives here to keep business
-  logic separate from presentation.
-*/
-
 import { state, setState } from './state.js';
 import * as api from './api.js';
 import { isDemoMode } from './api.js';
@@ -19,30 +8,75 @@ import { showEntryDialog, showWeightDialog } from './dialogs.js';
 import { renderHistory } from './history.js';
 import { renderSettings } from './settings.js';
 
-/**
- * Render the entire application by clearing the #app element and
- * appending the appropriate screen based on the current
- * navigation state.  This function should be called whenever
- * navigation or state changes occur.
- */
+function button(text, className, handler) {
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.textContent = text;
+  item.className = className;
+  item.addEventListener('click', handler);
+  return item;
+}
+
+function changeDay(offset) {
+  const date = new Date(state.selectedDate);
+  date.setDate(date.getDate() + offset);
+  setState('selectedDate', date);
+  api.fetchEntriesByDate(date);
+}
+
+function chooseDate() {
+  const entered = prompt('Select date (DD-MM-YYYY)', dateUtils.formatDisplay(state.selectedDate));
+  if (!entered) return;
+  const date = dateUtils.parseDisplayDate(entered);
+  if (!date) {
+    window.alert('Use date format DD-MM-YYYY, for example 30-05-2026.');
+    return;
+  }
+  setState('selectedDate', date);
+  api.fetchEntriesByDate(date);
+}
+
+function metric(label, value, target, className = '') {
+  const row = document.createElement('div');
+  row.className = `summary-metric ${className}`.trim();
+  const left = document.createElement('span');
+  left.textContent = label;
+  const right = document.createElement('strong');
+  right.textContent = target === undefined ? String(value) : `${value} / ${target}`;
+  row.append(left, right);
+  return row;
+}
+
+function addSwipeNavigation(container) {
+  let start = null;
+  container.addEventListener('touchstart', event => {
+    if (event.target.closest('button, input, textarea, select')) return;
+    const touch = event.changedTouches[0];
+    start = { x: touch.clientX, y: touch.clientY };
+  }, { passive: true });
+  container.addEventListener('touchend', event => {
+    if (!start) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    start = null;
+    if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+    changeDay(dx < 0 ? 1 : -1);
+  }, { passive: true });
+}
+
 export function render() {
   const app = document.getElementById('app');
   if (!app) return;
   app.innerHTML = '';
   const screen = getActiveScreen();
-  if (screen === 'main') {
-    app.appendChild(renderMain());
-  } else if (screen === 'history') {
-    app.appendChild(renderHistory());
-  } else if (screen === 'settings') {
-    app.appendChild(renderSettings());
-  }
+  app.appendChild(screen === 'history' ? renderHistory() : screen === 'settings' ? renderSettings() : renderMain());
 
   if (state.sync.message && !['idle', 'saved'].includes(state.sync.phase)) {
-    const syncBadge = document.createElement('div');
-    syncBadge.className = `sync-status sync-${state.sync.phase}`;
-    syncBadge.textContent = state.sync.message;
-    app.appendChild(syncBadge);
+    const status = document.createElement('div');
+    status.className = `sync-status sync-${state.sync.phase}`;
+    status.textContent = state.sync.message;
+    app.appendChild(status);
   }
   if (state.toast) {
     const toast = document.createElement('div');
@@ -52,199 +86,125 @@ export function render() {
   }
 }
 
-/**
- * Build the main screen.  Shows the current day, summary stats,
- * quick‑add buttons, a list of entries for the selected date and a
- * bottom bar with a link to settings.  Buttons trigger navigation
- * changes or open modal dialogs.
- *
- * @returns {HTMLElement}
- */
 export function renderMain() {
-  const container = document.createElement('div');
-  container.className = 'screen main active';
+  const selectedIso = dateUtils.toIso(state.selectedDate);
+  const container = document.createElement('main');
+  container.className = 'screen main active page';
+  addSwipeNavigation(container);
 
   if (isDemoMode()) {
-    const demoBanner = document.createElement('div');
-    demoBanner.className = 'demo-banner';
-    demoBanner.textContent = 'DEMO MODE – changes are not saved to Google Sheets';
-    container.appendChild(demoBanner);
+    const banner = document.createElement('div');
+    banner.className = 'demo-banner';
+    banner.textContent = 'DEMO MODE — changes are not saved to Google Sheets';
+    container.appendChild(banner);
   }
 
-  // ======================= HEADER =======================
-  const header = document.createElement('div');
-  header.className = 'header';
-  const dateRow = document.createElement('div');
-  dateRow.className = 'date-row';
-  // Prev/next date buttons
-  const prevBtn = document.createElement('button');
-  prevBtn.textContent = '⬅️';
-  prevBtn.className = 'btn-outline';
-  prevBtn.addEventListener('click', () => {
-    const d = new Date(state.selectedDate);
-    d.setDate(d.getDate() - 1);
-    setState('selectedDate', d);
-    api.fetchEntriesByDate(d);
-  });
-  const nextBtn = document.createElement('button');
-  nextBtn.textContent = '➡️';
-  nextBtn.className = 'btn-outline';
-  nextBtn.addEventListener('click', () => {
-    const d = new Date(state.selectedDate);
-    d.setDate(d.getDate() + 1);
-    setState('selectedDate', d);
-    api.fetchEntriesByDate(d);
-  });
-  // Date display with click to prompt for manual date
-  const dateCol = document.createElement('div');
-  dateCol.style.cursor = 'pointer';
-  dateCol.style.textAlign = 'center';
-  dateCol.addEventListener('click', () => {
-    const iso = dateUtils.toIso(state.selectedDate);
-    const newDateStr = prompt('Select date (YYYY-MM-DD)', iso);
-    if (newDateStr) {
-      const newDate = new Date(newDateStr);
-      if (!isNaN(newDate)) {
-        setState('selectedDate', newDate);
-        api.fetchEntriesByDate(newDate);
-      }
-    }
-  });
-  const dayName = document.createElement('div');
-  dayName.textContent = dateUtils.getDayName(state.selectedDate);
-  dayName.style.fontSize = '1.5rem';
-  const dateText = document.createElement('div');
-  dateText.textContent = dateUtils.getDisplayDate(state.selectedDate);
-  dateText.style.fontSize = '1rem';
-  dateCol.appendChild(dayName);
-  dateCol.appendChild(dateText);
-  dateRow.appendChild(prevBtn);
-  dateRow.appendChild(dateCol);
-  dateRow.appendChild(nextBtn);
-  header.appendChild(dateRow);
-
-  // ======================= SUMMARY =======================
-  const summary = document.createElement('div');
-  summary.className = 'summary';
-  const dayStats = calc.calculateDay(state.entries, state.settings);
-  // The Android history screen groups weeks from Monday. For the web build,
-  // the main weekly total is deliberately corrected to use the selected
-  // week's entries up to the selected date rather than repeating one day.
-  const selectedIso = dateUtils.toIso(state.selectedDate);
-  const weekStart = dateUtils.getWeekStart(selectedIso);
-  const selectedDay = new Date(`${selectedIso}T00:00:00`);
-  const monday = new Date(`${weekStart}T00:00:00`);
-  const daysSoFar = Math.floor((selectedDay - monday) / 86400000) + 1;
-  const weekEntries = (state.entriesFull || state.entries).filter(entry =>
-    dateUtils.getWeekStart(entry.date) === weekStart && entry.date <= selectedIso
+  const header = document.createElement('section');
+  header.className = 'card hero-card';
+  const brand = document.createElement('div');
+  brand.className = 'brand-row';
+  brand.innerHTML = '<div><h1>ChrisFit</h1><div class="version-label">Web preview · v2.1</div></div>';
+  brand.appendChild(button('⚙ Settings', 'btn-outline compact-button', () => navigate('settings')));
+  const dateNav = document.createElement('div');
+  dateNav.className = 'date-navigation';
+  dateNav.append(
+    button('←', 'date-button', () => changeDay(-1)),
+    Object.assign(document.createElement('button'), {
+      className: 'selected-date',
+      type: 'button',
+      innerHTML: `<strong>${dateUtils.getDayName(state.selectedDate)}</strong><span>${dateUtils.formatDisplay(state.selectedDate)}</span>`
+    }),
+    button('→', 'date-button', () => changeDay(1))
   );
-  const weekStats = calc.calculateWeek(weekEntries, state.settings, daysSoFar);
-  // Daily column
-  const dailyCol = document.createElement('div');
-  dailyCol.className = 'summary-column';
-  dailyCol.innerHTML =
-    `<div><strong>📅 Daily</strong></div>` +
-    `<div>🍔 ${dayStats.intake} / ${state.settings?.dailyCalories ?? 1500}</div>` +
-    `<div>🔥 ${dayStats.burn}</div>` +
-    `<div>⚖️ ${dayStats.net} / -${state.settings?.dailyDeficit ?? 500}</div>`;
-  // Weight/BMI column
-  const weightCol = document.createElement('div');
-  weightCol.className = 'summary-column';
-  const weightForDay = state.weights.find(weight => weight.date === selectedIso) || null;
-  if (weightForDay) {
-    const bmi = calc.calculateBMI(weightForDay.value);
-    weightCol.innerHTML =
-      `<div>⚖️ ${weightForDay.value} kg</div>` +
-      `<div>📊 ${bmi ? bmi.toFixed(1) : '--'} BMI</div>`;
-  } else {
-    weightCol.innerHTML = `<div>⚖️ -- kg</div><div>📊 -- BMI</div>`;
+  dateNav.children[1].addEventListener('click', chooseDate);
+  const swipeHint = document.createElement('p');
+  swipeHint.className = 'subtle-label';
+  swipeHint.textContent = 'Swipe left or right to change day on mobile.';
+  header.append(brand, dateNav, swipeHint);
+  container.appendChild(header);
+
+  const dayStats = calc.calculateDay(state.entries, state.settings);
+  const weekStart = dateUtils.getWeekStart(selectedIso);
+  const weekEntries = (state.entriesFull || []).filter(entry => dateUtils.getWeekStart(entry.date) === weekStart);
+  const weekStats = calc.calculateWeek(weekEntries, state.settings);
+  const weightForDay = state.weights.find(weight => weight.date === selectedIso);
+
+  const overview = document.createElement('section');
+  overview.className = 'overview-grid';
+  const daily = document.createElement('article');
+  daily.className = 'card summary-card';
+  daily.innerHTML = '<h2>Daily Summary</h2>';
+  daily.append(
+    metric('Food', dayStats.intake, state.settings?.dailyCalories ?? 1500),
+    metric('Burn', dayStats.burn),
+    metric('Deficit', dayStats.net, `-${state.settings?.dailyDeficit ?? 500}`, dayStats.achieved ? 'on-target' : '')
+  );
+  const weekly = document.createElement('article');
+  weekly.className = 'card summary-card';
+  weekly.innerHTML = '<h2>Weekly Summary</h2>';
+  weekly.append(
+    metric('Food', weekStats.intake, weekStats.weeklyFoodTarget),
+    metric('Burn', weekStats.burn),
+    metric('Deficit', weekStats.net, `-${weekStats.weeklyDeficitTarget}`, weekStats.achieved ? 'on-target' : '')
+  );
+  const weight = document.createElement('article');
+  weight.className = 'card summary-card weight-summary';
+  weight.innerHTML = `<h2>Weight</h2><div class="weight-value">${weightForDay ? `${weightForDay.value} kg` : '— kg'}</div><div class="subtle-label">${weightForDay ? `${calc.calculateBMI(weightForDay.value).toFixed(1)} BMI` : `No weight for ${dateUtils.formatDisplay(state.selectedDate)}`}</div>`;
+  weight.appendChild(button('Add Weight', 'btn-green full-button', showWeightDialog));
+  overview.append(daily, weekly, weight);
+  container.appendChild(overview);
+
+  const quick = document.createElement('section');
+  quick.className = 'card';
+  quick.innerHTML = '<div class="card-heading"><div><h2>Quick Add</h2><p>Tap saved items repeatedly to log multiple units.</p></div></div>';
+  const primaryActions = document.createElement('div');
+  primaryActions.className = 'primary-actions';
+  primaryActions.append(
+    button('＋ Add Food', 'btn-blue', () => showEntryDialog('food')),
+    button('− Add Burn', 'btn-red', () => showEntryDialog('burn')),
+    button('History', 'btn-green', () => navigate('history'))
+  );
+  const foods = document.createElement('div');
+  foods.className = 'food-grid';
+  if (!state.foods.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'No saved food buttons yet. Add them in Settings.';
+    foods.appendChild(empty);
   }
-  // Weekly column
-  const weeklyCol = document.createElement('div');
-  weeklyCol.className = 'summary-column';
-  weeklyCol.innerHTML =
-    `<div><strong>📊 Weekly</strong></div>` +
-    `<div>🍔 ${weekStats.intake} / ${weekStats.weeklyTarget}</div>` +
-    `<div>🔥 ${weekStats.burn}</div>` +
-    `<div>⚖️ ${weekStats.net} / -${weekStats.weeklyDeficitTarget}</div>`;
-  summary.appendChild(dailyCol);
-  summary.appendChild(weightCol);
-  summary.appendChild(weeklyCol);
-  header.appendChild(summary);
-
-  // ======================= ACTION GRID =======================
-  const grid = document.createElement('div');
-  grid.className = 'action-grid';
-  // History button
-  const historyBtn = document.createElement('button');
-  historyBtn.textContent = 'History';
-  historyBtn.className = 'btn-green';
-  historyBtn.addEventListener('click', () => navigate('history'));
-  grid.appendChild(historyBtn);
-  // Add weight button
-  const weightBtn = document.createElement('button');
-  weightBtn.textContent = 'Add Weight';
-  weightBtn.className = 'btn-green';
-  weightBtn.addEventListener('click', () => showWeightDialog());
-  grid.appendChild(weightBtn);
-  // Add other button
-  const otherBtn = document.createElement('button');
-  otherBtn.textContent = 'Add Other';
-  otherBtn.className = 'btn-blue';
-  otherBtn.addEventListener('click', () => showEntryDialog());
-  grid.appendChild(otherBtn);
-  // Add BMR button
-  const bmrBtn = document.createElement('button');
-  bmrBtn.textContent = 'Add BMR';
-  bmrBtn.className = 'btn-blue';
-  bmrBtn.addEventListener('click', async () => {
-    const bmr = state.settings?.bmr ?? 2000;
-    await api.addEntry(state.selectedDate, 'BMR', -bmr);
-  });
-  grid.appendChild(bmrBtn);
-  // Food buttons
   state.foods.forEach(food => {
-    const btn = document.createElement('button');
-    btn.textContent = food.name;
-    btn.className = 'btn-purple';
-    btn.addEventListener('click', async () => {
-      await api.addEntry(state.selectedDate, food.name, food.calories);
-    });
-    grid.appendChild(btn);
+    foods.appendChild(button(`${food.name}  ·  ${food.calories}`, 'saved-food-button', () => api.addEntry(state.selectedDate, food.name, food.calories)));
   });
+  quick.append(primaryActions, foods);
+  container.appendChild(quick);
 
-  // ======================= ENTRY LIST =======================
+  const entries = document.createElement('section');
+  entries.className = 'card entries-card';
+  entries.innerHTML = `<div class="card-heading"><div><h2>Entries</h2><p>${dateUtils.formatDisplay(state.selectedDate)}</p></div></div>`;
   const list = document.createElement('div');
   list.className = 'entries-list';
+  if (!state.entries.length) {
+    list.innerHTML = '<p class="empty-state">No entries for this day.</p>';
+  }
   state.entries.forEach(entry => {
     const row = document.createElement('div');
     row.className = 'entry-row';
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = `${entry.name || '(unnamed)'} (${entry.calories})${entry._pending ? '  ⟳' : ''}`;
-    const del = document.createElement('button');
-    del.textContent = 'X';
-    del.className = 'btn-red';
-    del.addEventListener('click', async () => {
-      await api.deleteEntry(entry.id);
-    });
-    row.appendChild(nameSpan);
-    row.appendChild(del);
+    const identity = document.createElement('div');
+    identity.className = 'entry-identity';
+    const label = document.createElement('strong');
+    label.textContent = entry.name || 'Unnamed entry (imported)';
+    const type = document.createElement('span');
+    type.className = entry.calories < 0 ? 'entry-burn' : 'entry-food';
+    type.textContent = entry.calories < 0 ? 'Burn' : 'Food';
+    identity.append(label, type);
+    const amount = document.createElement('span');
+    amount.className = 'entry-amount';
+    amount.textContent = `${entry.calories > 0 ? '+' : ''}${entry.calories}`;
+    if (entry._pending) amount.textContent += '  ⟳';
+    row.append(identity, amount, button('Delete', 'btn-text-danger', () => api.deleteEntry(entry.id)));
     list.appendChild(row);
   });
-
-  // ======================= BOTTOM BAR =======================
-  const bottom = document.createElement('div');
-  bottom.className = 'bottom-bar';
-  const settingsBtn = document.createElement('button');
-  settingsBtn.textContent = '⚙ Settings';
-  settingsBtn.className = 'btn-outline';
-  settingsBtn.addEventListener('click', () => navigate('settings'));
-  bottom.appendChild(settingsBtn);
-
-  // Assemble main screen
-  container.appendChild(header);
-  container.appendChild(grid);
-  container.appendChild(list);
-  container.appendChild(bottom);
+  entries.appendChild(list);
+  container.appendChild(entries);
   return container;
 }

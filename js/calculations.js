@@ -1,35 +1,38 @@
 /*
-  Calculation utilities.
-
-  Reproduces the daily and weekly calculations used by the Android app.
-  Intake is the sum of positive calories, burn is the sum of negative
-  calories (absolute value), and net is intake minus burn.  Colours are
-  determined by comparing net against the daily or weekly deficit target.
+  Calculations keep the Android data convention:
+  food/intake = positive calories; burn/BMR = negative calories.
+  The displayed Deficit figure is net calories (food minus burn):
+  negative means deficit/loss direction, positive means surplus/gain direction.
 */
 
-export function calculateDay(entries, settings) {
-  const intake = entries.filter(e => e.calories > 0).reduce((sum, e) => sum + e.calories, 0);
-  const burn = entries.filter(e => e.calories < 0).reduce((sum, e) => sum + Math.abs(e.calories), 0);
+export function calculateDay(entries, settings = {}) {
+  const intake = entries.filter(entry => Number(entry.calories) > 0)
+    .reduce((sum, entry) => sum + Number(entry.calories), 0);
+  const burn = entries.filter(entry => Number(entry.calories) < 0)
+    .reduce((sum, entry) => sum + Math.abs(Number(entry.calories)), 0);
   const net = intake - burn;
-  const deficitTarget = settings?.dailyDeficit ?? 500;
-  const color = net <= -deficitTarget ? 'green' : 'red';
-  return { intake, burn, net, color };
+  const deficitTarget = Number(settings.dailyDeficit ?? 500);
+  return { intake, burn, net, deficitTarget, achieved: net <= -deficitTarget };
 }
 
-export function calculateWeek(entries, settings, daysSoFar) {
-  // daysSoFar: number of days in week considered (Mon to current day)
-  const intake = entries.filter(e => e.calories > 0).reduce((sum, e) => sum + e.calories, 0);
-  const burn = entries.filter(e => e.calories < 0).reduce((sum, e) => sum + Math.abs(e.calories), 0);
-  const net = intake - burn;
-  const dailyTarget = settings?.dailyCalories ?? 1500;
-  const deficitTarget = settings?.dailyDeficit ?? 500;
-  const weeklyTarget = dailyTarget * daysSoFar;
-  const weeklyDeficitTarget = deficitTarget * daysSoFar;
-  const color = net <= -weeklyDeficitTarget ? 'green' : 'red';
-  return { intake, burn, net, weeklyTarget, weeklyDeficitTarget, color };
+export function calculateWeek(entries, settings = {}) {
+  const totals = calculateDay(entries, settings);
+  return {
+    ...totals,
+    weeklyFoodTarget: Number(settings.dailyCalories ?? 1500) * 7,
+    weeklyDeficitTarget: Number(settings.dailyDeficit ?? 500) * 7
+  };
 }
 
 export function calculateBMI(weightKg, heightM = 1.8) {
   if (!weightKg) return null;
-  return weightKg / (heightM * heightM);
+  return Number(weightKg) / (heightM * heightM);
+}
+
+export function estimateWeightText(netCalories) {
+  const net = Number(netCalories);
+  if (net === 0) return 'This week is approximately weight-neutral.';
+  const grams = Math.round((Math.abs(net) / 7700) * 1000);
+  if (net < 0) return `This week should help you lose approximately ${grams} g.`;
+  return `This week may cause you to gain approximately ${grams} g.`;
 }

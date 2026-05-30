@@ -310,7 +310,9 @@ export async function saveSettings(settings) {
   enqueue_({ type: 'settings', data: payload });
 }
 export async function addFood(name, calories) {
-  const data = { name: String(name).trim(), calories: Number(calories) };
+  const cleanName = String(name || '').trim();
+  if (!cleanName) throw new Error('Saved food buttons require a name.');
+  const data = { name: cleanName, calories: Math.abs(Number(calories)) };
   if (isDemoMode()) { mem.foods.unshift({ id: generateId_(), ...data }); remote.foods = clone_(mem.foods); renderEffective_(); return; }
   enqueue_({ type: 'foods', tempId: tempId_(), data });
 }
@@ -320,7 +322,9 @@ export async function deleteFood(id) {
   enqueue_({ type: 'deleteFood', data: { id } });
 }
 export async function addEntry(date, name, calories) {
-  const data = { date: toISODate_(date), name: String(name), calories: Number(calories) };
+  const cleanName = String(name || '').trim();
+  if (!cleanName) throw new Error('Entries require a name.');
+  const data = { date: toISODate_(date), name: cleanName, calories: Number(calories) };
   if (isDemoMode()) { mem.entries.unshift({ id: generateId_(), ...data }); remote.entries = clone_(mem.entries); renderEffective_(); return; }
   enqueue_({ type: 'entries', tempId: tempId_(), data });
 }
