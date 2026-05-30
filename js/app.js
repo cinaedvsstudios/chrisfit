@@ -9,13 +9,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   registerSystemThemeListener();
   subscribe(render);
   onNavigate(render);
+
+  // Draw immediately using safe defaults; this prevents a blank/black page if
+  // loading is slow or the endpoint fails temporarily.
   render();
   try {
     await api.initialise();
   } catch (error) {
     console.error('Initial load failed:', error);
-    const app = document.getElementById('app');
-    if (app) app.innerHTML = '<div class="load-error">Could not load data from Google Sheets. Refresh or check the Apps Script connection.</div>';
+    render();
   }
 });
 

@@ -1,11 +1,11 @@
 /**
  * ChrisFit Web Google Apps Script backend.
  *
- * Replace YOUR_SPREADSHEET_ID_HERE before deployment.
+ * Replace 1rizJJ7oC2VbZPKYuMnlYD5WhhmEvLPcJM1OY_jD0bVM before deployment.
  * Sheets: entries(id,date,name,calories), foods(id,name,calories),
  * weights(id,value,date), settings(id,dailyCalories,dailyDeficit,bmr).
  */
-const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE';
+const SPREADSHEET_ID = '1rizJJ7oC2VbZPKYuMnlYD5WhhmEvLPcJM1OY_jD0bVM';
 const TOKEN = '';
 
 function doGet(e) {
@@ -80,8 +80,24 @@ function addFood_(data) {
   target.appendRow([id, String(data.name).trim(), Number(data.calories)]);
   return { success: true, id: id };
 }
+/**
+ * Google Sheets may turn a written yyyy-MM-dd value into a Date object.
+ * Normalise all dates back to the app's internal yyyy-MM-dd format.
+ */
+function isoDate_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, workbook_().getSpreadsheetTimeZone(), 'yyyy-MM-dd');
+  }
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : text;
+}
 function getEntries_(date) {
-  return sheet_('entries').getDataRange().getValues().slice(1).filter(row => row[0] !== '' && (!date || String(row[1]) === String(date))).map(row => ({ id: Number(row[0]), date: String(row[1]), name: String(row[2]), calories: Number(row[3]) })).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  const selectedDate = date ? isoDate_(date) : '';
+  return sheet_('entries').getDataRange().getValues().slice(1)
+    .filter(row => row[0] !== '' && (!selectedDate || isoDate_(row[1]) === selectedDate))
+    .map(row => ({ id: Number(row[0]), date: isoDate_(row[1]), name: String(row[2]), calories: Number(row[3]) }))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 }
 function addEntry_(data) {
   if (!String(data.date || '').match(/^\d{4}-\d{2}-\d{2}$/)) throw new Error('Entry date is invalid.');
@@ -92,7 +108,10 @@ function addEntry_(data) {
   return { success: true, id: id };
 }
 function getWeights_() {
-  return sheet_('weights').getDataRange().getValues().slice(1).filter(row => row[0] !== '').map(row => ({ id: Number(row[0]), value: Number(row[1]), date: String(row[2]) })).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  return sheet_('weights').getDataRange().getValues().slice(1)
+    .filter(row => row[0] !== '')
+    .map(row => ({ id: Number(row[0]), value: Number(row[1]), date: isoDate_(row[2]) }))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 }
 function addWeight_(data) {
   if (!String(data.date || '').match(/^\d{4}-\d{2}-\d{2}$/)) throw new Error('Weight date is invalid.');

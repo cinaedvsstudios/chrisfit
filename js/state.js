@@ -1,5 +1,7 @@
 /*
   Centralised application state and visible sync/toast feedback.
+  Defaults are available before the first Google Sheets response so the UI can
+  always render instead of presenting a blank screen while data is loading.
 */
 
 export const state = {
@@ -8,7 +10,7 @@ export const state = {
   entriesFull: [],
   foods: [],
   weights: [],
-  settings: null,
+  settings: { id: 1, dailyCalories: 1500, dailyDeficit: 500, bmr: 2000 },
   sync: { phase: 'idle', pending: 0, message: '' },
   toast: null,
   listeners: new Set()

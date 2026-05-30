@@ -4,7 +4,7 @@ import { isDemoMode } from './api.js';
 import * as dateUtils from './date-utils.js';
 import * as calc from './calculations.js';
 import { getActiveScreen, navigate } from './navigation.js';
-import { showEntryDialog, showWeightDialog } from './dialogs.js';
+import { showFoodDialog, showBurnDialog, showWeightDialog } from './dialogs.js';
 import { renderHistory } from './history.js';
 import { renderSettings } from './settings.js';
 
@@ -103,7 +103,7 @@ export function renderMain() {
   header.className = 'card hero-card';
   const brand = document.createElement('div');
   brand.className = 'brand-row';
-  brand.innerHTML = '<div><h1>ChrisFit</h1><div class="version-label">Web preview · v2.1</div></div>';
+  brand.innerHTML = '<div><h1>ChrisFit</h1><div class="version-label">Web preview · v2.2</div></div>';
   brand.appendChild(button('⚙ Settings', 'btn-outline compact-button', () => navigate('settings')));
   const dateNav = document.createElement('div');
   dateNav.className = 'date-navigation';
@@ -159,9 +159,15 @@ export function renderMain() {
   quick.innerHTML = '<div class="card-heading"><div><h2>Quick Add</h2><p>Tap saved items repeatedly to log multiple units.</p></div></div>';
   const primaryActions = document.createElement('div');
   primaryActions.className = 'primary-actions';
+  const addBmr = () => {
+    const hasTotalBurn = state.entries.some(entry => ['Health Connect Burn', 'Estimated Total Burn'].includes(entry.name));
+    if (hasTotalBurn && !confirm('This day already has a total-burn entry. Adding BMR as well may double-count burn. Continue?')) return;
+    api.addEntry(state.selectedDate, 'BMR', -Math.abs(Number(state.settings?.bmr ?? 2000)));
+  };
   primaryActions.append(
-    button('＋ Add Food', 'btn-blue', () => showEntryDialog('food')),
-    button('− Add Burn', 'btn-red', () => showEntryDialog('burn')),
+    button('＋ Add Food', 'btn-blue', showFoodDialog),
+    button('− Add Burn', 'btn-red', showBurnDialog),
+    button('BMR', 'btn-purple', addBmr),
     button('History', 'btn-green', () => navigate('history'))
   );
   const foods = document.createElement('div');

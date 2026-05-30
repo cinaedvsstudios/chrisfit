@@ -344,6 +344,43 @@ export async function deleteWeight(id) {
   enqueue_({ type: 'deleteWeight', data: { id } });
 }
 
+/**
+ * Replace BMR/earlier estimates for one day with one temporary total-burn estimate.
+ * This preserves arbitrary manual burn entries and sends the deletions plus new row
+ * in the existing batch sync request used by the Google Sheets backend.
+ */
+export async function saveEstimatedTotalBurn(date, calories) {
+  const iso = toISODate_(date);
+  const value = Math.abs(Number(calories));
+  if (!Number.isFinite(value) || value <= 0) throw new Error('Estimated burn value is invalid.');
+  const replaceNames = new Set(['BMR', 'Estimated Total Burn']);
+
+  if (isDemoMode()) {
+    mem.entries = mem.entries.filter(entry => !(entry.date === iso && replaceNames.has(entry.name)));
+    mem.entries.unshift({ id: generateId_(), date: iso, name: 'Estimated Total Burn', calories: -value });
+    remote.entries = clone_(mem.entries);
+    renderEffective_();
+    showToast('Estimated total burn saved', 'success', 2200);
+    return;
+  }
+
+  // Remove queued BMR/estimate adds for the day before building the replacement batch.
+  pending = pending.filter(operation => !(operation.type === 'entries' && operation.data.date === iso && replaceNames.has(operation.data.name)));
+  const existing = (state.entriesFull || []).filter(entry => entry.date === iso && replaceNames.has(entry.name) && !entry._pending);
+  existing.forEach(entry => pending.push({ type: 'deleteEntry', data: { id: entry.id }, queueId: tempId_() }));
+  pending.push({
+    type: 'entries',
+    tempId: tempId_(),
+    data: { date: iso, name: 'Estimated Total Burn', calories: -value },
+    queueId: tempId_()
+  });
+  saveQueue_();
+  renderEffective_();
+  setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
+  showToast('Estimate added — syncing in background', 'info', 1800);
+  scheduleFlush_();
+}
+
 export async function exportData() {
   if (!isDemoMode()) {
     await flushPending();

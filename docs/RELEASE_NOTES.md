@@ -56,3 +56,13 @@ future enhancements.
 - Kept Connection Debug available while live Google Sheets migration is being verified.
 
 Deferred deliberately: Daily Burn Target (requires a data schema/backend update), editing entries, automatic BMR, default Daily Burn and bulk add.
+
+
+## v2.2 Preview Repair & Burn Estimate Update — 30 May 2026
+
+- Fixed the black-screen startup failure caused by rendering summaries before settings were loaded.
+- Restored the one-tap **BMR** action alongside **Add Food** and **Add Burn**.
+- Added **Estimate Total Burn to Midnight** inside Add Burn. It estimates final daily burn by adding only remaining BMR-paced burn to the current health-app total.
+- Saving an estimated total burn replaces existing `BMR` and earlier `Estimated Total Burn` entries for that date to avoid double-counting; other manual burn entries are not silently deleted.
+- Preserved the live Google Sheets/Apps Script connection contract and the Connection Debug panel.
+- Complete-project ZIP delivery replaces partial patch delivery for future releases.

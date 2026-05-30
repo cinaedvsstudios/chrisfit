@@ -29,3 +29,49 @@
   justify-content: flex-end;
   gap: 0.55rem;
 }
+.dialog-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  padding: 0.25rem;
+  background: var(--color-surface-soft);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+.dialog-mode-switch button {
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 0.6rem 0.45rem;
+}
+.dialog-mode-switch button.active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 700;
+  box-shadow: 0 1px 5px var(--color-shadow);
+}
+.dialog-note {
+  margin: 0 0 0.8rem;
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.estimate-result {
+  border-radius: 12px;
+  padding: 0.72rem;
+  margin: 0.45rem 0 1rem;
+  background: var(--color-surface-soft);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+.estimate-result div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0;
+}
+.estimate-result .estimate-total {
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
