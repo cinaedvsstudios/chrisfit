@@ -16,3 +16,17 @@
   .settings-page { max-width: 770px; padding-left: 1.6rem; padding-right: 1.6rem; }
   .weight-summary { min-width: 190px; }
 }
+
+@media (max-width: 720px) {
+  .food-add-row-emoji, .food-editor-row-emoji, .library-add-row, .library-editor-row {
+    grid-template-columns: 52px minmax(0, 1fr) 92px;
+  }
+  .food-add-row-emoji > button,
+  .food-editor-row-emoji > .food-editor-actions,
+  .library-add-row > button,
+  .library-editor-row > .food-editor-actions {
+    grid-column: 1 / -1;
+  }
+  .library-add-row > input:nth-child(3),
+  .library-editor-row > input:nth-child(3) { grid-column: 2 / 4; }
+}

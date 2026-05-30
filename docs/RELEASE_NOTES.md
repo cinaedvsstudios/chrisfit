@@ -1,3 +1,22 @@
+## v2.6 — Carry-forward weight display and monthly weight history — 30 May 2026
+
+- The main Weight card now shows the most recent recorded weight on or before the selected date when that date has no new weigh-in.
+- A carried-forward weight identifies its original recorded date, and never uses a later/future weight while reviewing an earlier day.
+- Rebuilt Weight History into expandable month groups, with the relevant selected-date month opened automatically where available.
+- Corrected food-specific emoji display inside expanded History entries so quick-button and library emojis are reused consistently.
+- Retained the v2.5 Food Library and per-food emoji backend without requiring any additional sheet schema changes beyond that release.
+
+## v2.5 — Food Library and per-item emoji update — 30 May 2026
+
+- Added a separate `library` Google Sheet tab for searchable foods that do not need to appear as Quick Add buttons.
+- Add Food search now returns matches from both Quick Add buttons (`foods`) and Food Library (`library`), including serving amount for library results.
+- Added optional per-food emoji support for both Quick Add buttons and library records; entry names remain clean data without embedded emoji.
+- Added Food Library management in Settings: add, edit and delete library foods.
+- Made the Apps Script backend read manually arranged columns by header name, including the user's `Name | Amount | kcal | Emoji` library layout.
+- Apps Script adds missing `id` and `emoji` columns to `library` as needed; it does not require recreating the pasted library list.
+- Updated phone backup import: the recommended import path keeps current web Quick Add buttons/emoji and always preserves Food Library while importing entries and weights.
+- Retained the v2.4 History selected-week and daily-average improvements.
+
 ## v2.4 — History readability and weekly average update — 30 May 2026
 
 - Removed the visible button borders/background around previous/next date emoji arrows.

@@ -1,15 +1,16 @@
 /*
   ChrisFit Google Sheets access with optimistic background sync.
-  The browser immediately renders queued actions, then sends them to Apps Script
-  as one batch. v3 uses a fresh queue key so old failed test operations are not
-  unexpectedly submitted after upgrading the app.
+  v2.5 adds:
+  - individual emoji metadata for Quick Add foods;
+  - a separate searchable Food Library;
+  - safe phone-import behaviour that can preserve web-configured foods/library.
 */
 import { CONFIG } from './config.js';
 import { state, defaultSettings, setState, setSync, showToast } from './state.js';
 
 const QUEUE_KEY = 'chrisfit.pendingWrites.v3';
-const mem = { nextId: 1, entries: [], foods: [], weights: [], settings: { ...defaultSettings } };
-const remote = { entries: [], foods: [], weights: [], settings: { ...defaultSettings } };
+const mem = { nextId: 1, entries: [], foods: [], library: [], weights: [], settings: { ...defaultSettings } };
+const remote = { entries: [], foods: [], library: [], weights: [], settings: { ...defaultSettings } };
 let pending = readQueue_();
 let flushing = false;
 let flushTimer = null;
@@ -28,16 +29,39 @@ function toISODate_(date) {
 }
 function normaliseSettings_(settings = {}) { return { ...defaultSettings, ...(settings || {}), id: 1 }; }
 function normaliseFood_(food, index = 0) {
-  return { ...food, id: food.id, name: String(food.name || ''), calories: Number(food.calories), sortOrder: Number.isFinite(Number(food.sortOrder)) ? Number(food.sortOrder) : index + 1, active: food.active === false || String(food.active).toLowerCase() === 'false' ? false : true };
+  return {
+    ...food,
+    id: food.id,
+    name: String(food.name || '').trim(),
+    calories: Number(food.calories),
+    sortOrder: Number.isFinite(Number(food.sortOrder)) ? Number(food.sortOrder) : index + 1,
+    active: food.active === false || String(food.active).toLowerCase() === 'false' ? false : true,
+    emoji: String(food.emoji || '').trim()
+  };
+}
+function normaliseLibrary_(item, index = 0) {
+  return {
+    ...item,
+    id: item.id ?? index + 1,
+    name: String(item.name || '').trim(),
+    amount: String(item.amount || '').trim(),
+    calories: Number(item.calories),
+    emoji: String(item.emoji || '').trim()
+  };
 }
 function endpoint_(action, params = {}) {
   const url = new URL(CONFIG.baseUrl);
   url.searchParams.set('action', action);
   if (CONFIG.token) url.searchParams.set('token', CONFIG.token);
-  Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value); });
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
+  });
   return url.toString();
 }
-function assertApiResponse_(data) { if (data && data.success === false) throw new Error(data.error || 'Backend request failed'); return data; }
+function assertApiResponse_(data) {
+  if (data && data.success === false) throw new Error(data.error || 'Backend request failed');
+  return data;
+}
 async function get_(action, params = {}) {
   if (isDemoMode()) return undefined;
   const response = await fetch(endpoint_(action, params));
@@ -46,12 +70,18 @@ async function get_(action, params = {}) {
 }
 async function post_(action, body = {}) {
   if (isDemoMode()) return undefined;
-  const response = await fetch(endpoint_(action), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+  const response = await fetch(endpoint_(action), {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  });
   if (!response.ok) throw new Error(`Backend HTTP error ${response.status}`);
   return assertApiResponse_(await response.json());
 }
 
-function findOperationForPendingAdd_(type, id) { return pending.find(operation => operation.type === type && String(operation.tempId) === String(id)); }
+function findOperationForPendingAdd_(type, id) {
+  return pending.find(operation => operation.type === type && String(operation.tempId) === String(id));
+}
 function applyOperations_(source, addType, updateType, deleteType) {
   let result = clone_(source || []);
   pending.forEach(operation => {
@@ -60,13 +90,16 @@ function applyOperations_(source, addType, updateType, deleteType) {
       const index = result.findIndex(record => String(record.id) === String(operation.data.id));
       if (index >= 0) result[index] = { ...result[index], ...operation.data, _pending: true };
     }
-    if (operation.type === deleteType) result = result.filter(record => String(record.id) !== String(operation.data.id));
+    if (operation.type === deleteType) {
+      result = result.filter(record => String(record.id) !== String(operation.data.id));
+    }
   });
   return result;
 }
 function effectiveSettings_() {
   let settings = normaliseSettings_(remote.settings || mem.settings);
-  pending.filter(operation => operation.type === 'settings').forEach(operation => { settings = normaliseSettings_({ ...settings, ...operation.data }); });
+  pending.filter(operation => operation.type === 'settings')
+    .forEach(operation => { settings = normaliseSettings_({ ...settings, ...operation.data }); });
   return settings;
 }
 function renderEffective_() {
@@ -74,15 +107,23 @@ function renderEffective_() {
     .sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
   const selected = toISODate_(state.selectedDate);
   const foods = applyOperations_(remote.foods, 'foods', 'updateFood', 'deleteFood')
-    .map(normaliseFood_).sort((a, b) => a.sortOrder - b.sortOrder || Number(a.id) - Number(b.id));
+    .map(normaliseFood_)
+    .sort((a, b) => a.sortOrder - b.sortOrder || Number(a.id) - Number(b.id));
+  const library = applyOperations_(remote.library, 'library', 'updateLibrary', 'deleteLibrary')
+    .map(normaliseLibrary_)
+    .sort((a, b) => a.name.localeCompare(b.name));
   const weights = applyOperations_(remote.weights, 'weights', 'updateWeight', 'deleteWeight')
     .sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
+
   setState('entriesFull', entriesFull);
   setState('entries', entriesFull.filter(entry => entry.date === selected));
   setState('foods', foods);
+  setState('library', library);
   setState('weights', weights);
   setState('settings', effectiveSettings_());
-  if (pending.length && !flushing) setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
+  if (pending.length && !flushing) {
+    setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
+  }
 }
 function enqueue_(operation) {
   pending.push({ ...operation, queueId: tempId_() });
@@ -102,24 +143,39 @@ function scheduleFlush_(delay = 650) {
 function cancelUnsentAdd_(id, addType) {
   const before = pending.length;
   pending = pending.filter(operation => !(operation.type === addType && String(operation.tempId) === String(id)));
-  if (pending.length !== before) { saveQueue_(); renderEffective_(); showToast('Removed before syncing', 'info'); return true; }
+  if (pending.length !== before) {
+    saveQueue_();
+    renderEffective_();
+    showToast('Removed before syncing', 'info');
+    return true;
+  }
   return false;
 }
 function updateUnsentAdd_(id, addType, data) {
   const operation = findOperationForPendingAdd_(addType, id);
   if (!operation) return false;
   operation.data = { ...operation.data, ...data };
-  saveQueue_(); renderEffective_(); scheduleFlush_();
+  saveQueue_();
+  renderEffective_();
+  scheduleFlush_();
   return true;
 }
 
 async function loadRemoteData_() {
   if (isDemoMode()) {
-    remote.entries = clone_(mem.entries); remote.foods = clone_(mem.foods); remote.weights = clone_(mem.weights); remote.settings = normaliseSettings_(mem.settings); return;
+    remote.entries = clone_(mem.entries);
+    remote.foods = clone_(mem.foods);
+    remote.library = clone_(mem.library);
+    remote.weights = clone_(mem.weights);
+    remote.settings = normaliseSettings_(mem.settings);
+    return;
   }
-  const [settings, foods, entries, weights] = await Promise.all([get_('settings'), get_('foods'), get_('entries'), get_('weights')]);
+  const [settings, foods, library, entries, weights] = await Promise.all([
+    get_('settings'), get_('foods'), get_('library'), get_('entries'), get_('weights')
+  ]);
   remote.settings = normaliseSettings_(settings);
   remote.foods = (foods || []).map(normaliseFood_);
+  remote.library = (library || []).map(normaliseLibrary_);
   remote.entries = entries || [];
   remote.weights = weights || [];
 }
@@ -127,8 +183,12 @@ export async function initialise() {
   setSync('loading', pending.length, 'Loading…');
   await loadRemoteData_();
   renderEffective_();
-  if (pending.length && !isDemoMode()) { setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`); scheduleFlush_(150); }
-  else setSync('saved', 0, isDemoMode() ? 'Demo mode' : 'Connected');
+  if (pending.length && !isDemoMode()) {
+    setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
+    scheduleFlush_(150);
+  } else {
+    setSync('saved', 0, isDemoMode() ? 'Demo mode' : 'Connected');
+  }
 }
 export async function flushPending() {
   if (isDemoMode() || flushing || pending.length === 0) return;
@@ -139,14 +199,21 @@ export async function flushPending() {
     await post_('batch', { operations: batch.map(({ type, data }) => ({ type, data })) });
     const complete = new Set(batch.map(operation => operation.queueId));
     pending = pending.filter(operation => !complete.has(operation.queueId));
-    saveQueue_(); await loadRemoteData_(); renderEffective_();
+    saveQueue_();
+    await loadRemoteData_();
+    renderEffective_();
     if (pending.length) scheduleFlush_(150);
-    else { setSync('saved', 0, 'Saved'); showToast('Saved', 'success', 1600); }
+    else {
+      setSync('saved', 0, 'Saved');
+      showToast('Saved', 'success', 1600);
+    }
   } catch (error) {
     console.error('Sync failed:', error);
     setSync('error', pending.length, 'Could not sync — changes queued');
     showToast(`Sync failed: ${error.message}`, 'error', 4200);
-  } finally { flushing = false; }
+  } finally {
+    flushing = false;
+  }
 }
 
 function demoCommit_(type, data) {
@@ -156,57 +223,120 @@ function demoCommit_(type, data) {
   else if (type === 'foods') mem.foods.push({ id: generateId_(), ...data });
   else if (type === 'updateFood') mem.foods = mem.foods.map(item => String(item.id) === String(data.id) ? { ...item, ...data } : item);
   else if (type === 'deleteFood') mem.foods = mem.foods.filter(item => String(item.id) !== String(data.id));
+  else if (type === 'library') mem.library.push({ id: generateId_(), ...data });
+  else if (type === 'updateLibrary') mem.library = mem.library.map(item => String(item.id) === String(data.id) ? { ...item, ...data } : item);
+  else if (type === 'deleteLibrary') mem.library = mem.library.filter(item => String(item.id) !== String(data.id));
   else if (type === 'weights') mem.weights.unshift({ id: generateId_(), ...data });
   else if (type === 'updateWeight') mem.weights = mem.weights.map(item => String(item.id) === String(data.id) ? { ...item, ...data } : item);
   else if (type === 'deleteWeight') mem.weights = mem.weights.filter(item => String(item.id) !== String(data.id));
   else if (type === 'settings') mem.settings = normaliseSettings_({ ...mem.settings, ...data });
-  remote.entries = clone_(mem.entries); remote.foods = clone_(mem.foods); remote.weights = clone_(mem.weights); remote.settings = clone_(mem.settings); renderEffective_();
+  remote.entries = clone_(mem.entries);
+  remote.foods = clone_(mem.foods);
+  remote.library = clone_(mem.library);
+  remote.weights = clone_(mem.weights);
+  remote.settings = clone_(mem.settings);
+  renderEffective_();
 }
 function mutate_(type, data, tempId) {
-  if (isDemoMode()) { demoCommit_(type, data); return; }
+  if (isDemoMode()) {
+    demoCommit_(type, data);
+    return;
+  }
   enqueue_({ type, data, ...(tempId ? { tempId } : {}) });
 }
-export function fetchEntriesByDate(date) { setState('entries', state.entriesFull.filter(entry => entry.date === toISODate_(date))); }
+
+export function fetchEntriesByDate(date) {
+  setState('entries', state.entriesFull.filter(entry => entry.date === toISODate_(date)));
+}
 export function addEntry(date, name, calories) {
-  const cleanName = String(name || '').trim(); if (!cleanName) throw new Error('Entries require a name.');
+  const cleanName = String(name || '').trim();
+  if (!cleanName) throw new Error('Entries require a name.');
   mutate_('entries', { date: toISODate_(date), name: cleanName, calories: Number(calories) }, tempId_());
 }
 export function updateEntry(id, data) {
-  const cleanName = String(data.name || '').trim(); if (!cleanName) throw new Error('Entries require a name.');
+  const cleanName = String(data.name || '').trim();
+  if (!cleanName) throw new Error('Entries require a name.');
   const payload = { id, date: toISODate_(data.date), name: cleanName, calories: Number(data.calories) };
   if (updateUnsentAdd_(id, 'entries', payload)) return;
   mutate_('updateEntry', payload);
 }
-export function deleteEntry(id) { if (!cancelUnsentAdd_(id, 'entries')) mutate_('deleteEntry', { id }); }
-export function addWeight(date, value) { mutate_('weights', { date: toISODate_(date), value: Number(value) }, tempId_()); }
+export function deleteEntry(id) {
+  if (!cancelUnsentAdd_(id, 'entries')) mutate_('deleteEntry', { id });
+}
+export function addWeight(date, value) {
+  mutate_('weights', { date: toISODate_(date), value: Number(value) }, tempId_());
+}
 export function updateWeight(id, data) {
   const payload = { id, date: toISODate_(data.date), value: Number(data.value) };
   if (updateUnsentAdd_(id, 'weights', payload)) return;
   mutate_('updateWeight', payload);
 }
-export function deleteWeight(id) { if (!cancelUnsentAdd_(id, 'weights')) mutate_('deleteWeight', { id }); }
-export function addFood(name, calories) {
-  const cleanName = String(name || '').trim(); if (!cleanName) throw new Error('Saved food buttons require a name.');
+export function deleteWeight(id) {
+  if (!cancelUnsentAdd_(id, 'weights')) mutate_('deleteWeight', { id });
+}
+export function addFood(name, calories, emoji = '') {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) throw new Error('Saved food buttons require a name.');
+  if (!Number.isFinite(Number(calories)) || Number(calories) <= 0) throw new Error('Saved food buttons require calories.');
   const maxOrder = state.foods.reduce((max, food) => Math.max(max, Number(food.sortOrder) || 0), 0);
-  mutate_('foods', { name: cleanName, calories: Math.abs(Number(calories)), sortOrder: maxOrder + 1, active: true }, tempId_());
+  mutate_('foods', { name: cleanName, calories: Math.abs(Number(calories)), sortOrder: maxOrder + 1, active: true, emoji: String(emoji || '').trim() }, tempId_());
 }
 export function updateFood(id, data) {
-  const cleanName = String(data.name || '').trim(); if (!cleanName) throw new Error('Saved food buttons require a name.');
-  const payload = { id, name: cleanName, calories: Math.abs(Number(data.calories)), sortOrder: Number(data.sortOrder), active: Boolean(data.active) };
+  const cleanName = String(data.name || '').trim();
+  if (!cleanName) throw new Error('Saved food buttons require a name.');
+  if (!Number.isFinite(Number(data.calories)) || Number(data.calories) <= 0) throw new Error('Saved food buttons require calories.');
+  const payload = {
+    id,
+    name: cleanName,
+    calories: Math.abs(Number(data.calories)),
+    sortOrder: Number(data.sortOrder),
+    active: Boolean(data.active),
+    emoji: String(data.emoji || '').trim()
+  };
   if (updateUnsentAdd_(id, 'foods', payload)) return;
   mutate_('updateFood', payload);
 }
-export function deleteFood(id) { if (!cancelUnsentAdd_(id, 'foods')) mutate_('deleteFood', { id }); }
+export function deleteFood(id) {
+  if (!cancelUnsentAdd_(id, 'foods')) mutate_('deleteFood', { id });
+}
 export function reorderFood(id, direction) {
   const ordered = state.foods.slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const index = ordered.findIndex(food => String(food.id) === String(id));
   const swapIndex = index + direction;
   if (index < 0 || swapIndex < 0 || swapIndex >= ordered.length) return;
-  const current = ordered[index]; const swap = ordered[swapIndex];
+  const current = ordered[index];
+  const swap = ordered[swapIndex];
   updateFood(current.id, { ...current, sortOrder: swap.sortOrder });
   updateFood(swap.id, { ...swap, sortOrder: current.sortOrder });
 }
-export function saveSettings(settings) { mutate_('settings', normaliseSettings_(settings)); }
+
+export function addLibraryItem(name, amount, calories, emoji = '') {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) throw new Error('Library food requires a name.');
+  if (!Number.isFinite(Number(calories)) || Number(calories) <= 0) throw new Error('Library food requires calories.');
+  mutate_('library', { name: cleanName, amount: String(amount || '').trim(), calories: Math.abs(Number(calories)), emoji: String(emoji || '').trim() }, tempId_());
+}
+export function updateLibraryItem(id, data) {
+  const cleanName = String(data.name || '').trim();
+  if (!cleanName) throw new Error('Library food requires a name.');
+  if (!Number.isFinite(Number(data.calories)) || Number(data.calories) <= 0) throw new Error('Library food requires calories.');
+  const payload = {
+    id,
+    name: cleanName,
+    amount: String(data.amount || '').trim(),
+    calories: Math.abs(Number(data.calories)),
+    emoji: String(data.emoji || '').trim()
+  };
+  if (updateUnsentAdd_(id, 'library', payload)) return;
+  mutate_('updateLibrary', payload);
+}
+export function deleteLibraryItem(id) {
+  if (!cancelUnsentAdd_(id, 'library')) mutate_('deleteLibrary', { id });
+}
+
+export function saveSettings(settings) {
+  mutate_('settings', normaliseSettings_(settings));
+}
 export function replaceBurnWithEstimate(date, total) {
   const iso = toISODate_(date);
   const sameDay = state.entriesFull.filter(entry => entry.date === iso);
@@ -217,38 +347,106 @@ export function replaceBurnWithEstimate(date, total) {
   addEntry(iso, 'Estimated Total Burn', -Math.abs(Number(total)));
   return true;
 }
-export async function exportData() { return isDemoMode() ? { entries: mem.entries.map(({ id, ...data }) => data), foods: mem.foods.map(({ id, sortOrder, active, ...data }) => data), weights: mem.weights.map(({ id, ...data }) => data) } : get_('export'); }
-export async function importData(data) {
-  if (!data || !Array.isArray(data.entries) || !Array.isArray(data.foods) || !Array.isArray(data.weights)) throw new Error('Backup must contain entries, foods and weights arrays.');
-  pending = []; saveQueue_();
+
+export async function exportData() {
+  return isDemoMode()
+    ? {
+        entries: mem.entries.map(({ id, ...data }) => data),
+        foods: mem.foods.map(({ id, sortOrder, active, emoji, ...data }) => data),
+        weights: mem.weights.map(({ id, ...data }) => data)
+      }
+    : get_('export');
+}
+export async function importData(data, options = {}) {
+  if (!data || !Array.isArray(data.entries) || !Array.isArray(data.foods) || !Array.isArray(data.weights)) {
+    throw new Error('Backup must contain entries, foods and weights arrays.');
+  }
+  const preserveFoods = options.preserveFoods !== false;
+  pending = [];
+  saveQueue_();
   if (isDemoMode()) {
     mem.entries = data.entries.map(item => ({ id: generateId_(), ...item }));
-    mem.foods = data.foods.map((item, index) => ({ id: generateId_(), ...item, sortOrder: index + 1, active: true }));
+    if (!preserveFoods) mem.foods = data.foods.map((item, index) => ({ id: generateId_(), ...item, sortOrder: index + 1, active: true, emoji: '' }));
     mem.weights = data.weights.map(item => ({ id: generateId_(), ...item }));
-    await loadRemoteData_(); renderEffective_(); return;
+    await loadRemoteData_();
+    renderEffective_();
+    return;
   }
-  await post_('import', data); await loadRemoteData_(); renderEffective_(); setSync('saved', 0, 'Imported');
+  await post_('import', { ...data, preserveFoods });
+  await loadRemoteData_();
+  renderEffective_();
+  setSync('saved', 0, 'Imported');
 }
 export async function resetAllData() {
-  pending = []; saveQueue_();
-  if (isDemoMode()) { mem.entries = []; mem.foods = []; mem.weights = []; await loadRemoteData_(); renderEffective_(); return; }
-  await post_('reset', {}); await loadRemoteData_(); renderEffective_();
+  pending = [];
+  saveQueue_();
+  if (isDemoMode()) {
+    mem.entries = [];
+    mem.foods = [];
+    mem.weights = [];
+    await loadRemoteData_();
+    renderEffective_();
+    return;
+  }
+  await post_('reset', {});
+  await loadRemoteData_();
+  renderEffective_();
 }
 
-export function getConnectionInfo() { return { mode: isDemoMode() ? 'demo' : 'google-apps-script', endpoint: CONFIG.baseUrl || '(not configured)', tokenConfigured: Boolean(CONFIG.token), online: navigator.onLine, pendingChanges: pending.length, syncPhase: state.sync.phase, syncMessage: state.sync.message || '(none)' }; }
-export function discardPendingChanges() { const count = pending.length; pending = []; saveQueue_(); renderEffective_(); setSync('idle', 0, ''); showToast(`${count} unsynced local change${count === 1 ? '' : 's'} discarded`, 'info', 3000); return count; }
+export function getConnectionInfo() {
+  return {
+    mode: isDemoMode() ? 'demo' : 'google-apps-script',
+    endpoint: CONFIG.baseUrl || '(not configured)',
+    tokenConfigured: Boolean(CONFIG.token),
+    online: navigator.onLine,
+    pendingChanges: pending.length,
+    syncPhase: state.sync.phase,
+    syncMessage: state.sync.message || '(none)'
+  };
+}
+export function discardPendingChanges() {
+  const count = pending.length;
+  pending = [];
+  saveQueue_();
+  renderEffective_();
+  setSync('idle', 0, '');
+  showToast(`${count} unsynced local change${count === 1 ? '' : 's'} discarded`, 'info', 3000);
+  return count;
+}
 async function diagnosticRequest_(label, action, options = {}) {
-  const started = performance.now(); const lines = [label, `${options.method || 'GET'} ${endpoint_(action)}`];
-  try { const response = await fetch(endpoint_(action), options); lines.push(`HTTP result: ${response.status}`, `Elapsed: ${Math.round(performance.now() - started)} ms`, `Response body: ${(await response.text()).slice(0, 1200) || '(empty)'}`); }
-  catch (error) { lines.push(`FAILED after ${Math.round(performance.now() - started)} ms`, `${error.name || 'Error'}: ${error.message || String(error)}`); }
+  const started = performance.now();
+  const lines = [label, `${options.method || 'GET'} ${endpoint_(action)}`];
+  try {
+    const response = await fetch(endpoint_(action), options);
+    lines.push(
+      `HTTP result: ${response.status}`,
+      `Elapsed: ${Math.round(performance.now() - started)} ms`,
+      `Response body: ${(await response.text()).slice(0, 1200) || '(empty)'}`
+    );
+  } catch (error) {
+    lines.push(`FAILED after ${Math.round(performance.now() - started)} ms`, `${error.name || 'Error'}: ${error.message || String(error)}`);
+  }
   return lines.join('\n');
 }
 export async function runConnectionDebugTest() {
   const info = getConnectionInfo();
-  const lines = ['ChrisFit Connection Debug Report', `Generated: ${new Date().toISOString()}`, `App page: ${window.location.href}`, `Mode: ${info.mode}`, `Endpoint: ${info.endpoint}`, `Pending local changes: ${info.pendingChanges}`, `Visible sync state: ${info.syncPhase} — ${info.syncMessage}`];
+  const lines = [
+    'ChrisFit Connection Debug Report',
+    `Generated: ${new Date().toISOString()}`,
+    `App page: ${window.location.href}`,
+    `Mode: ${info.mode}`,
+    `Endpoint: ${info.endpoint}`,
+    `Pending local changes: ${info.pendingChanges}`,
+    `Visible sync state: ${info.syncPhase} — ${info.syncMessage}`
+  ];
   if (isDemoMode()) return `${lines.join('\n')}\n\nTEST NOT RUN: demo mode.`;
   lines.push('', await diagnosticRequest_('TEST 1 — Read settings', 'settings'));
   lines.push('', await diagnosticRequest_('TEST 2 — Read entries', 'entries'));
-  lines.push('', await diagnosticRequest_('TEST 3 — Empty batch sync route', 'batch', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ operations: [] }) }));
+  lines.push('', await diagnosticRequest_('TEST 3 — Read food library', 'library'));
+  lines.push('', await diagnosticRequest_('TEST 4 — Empty batch sync route', 'batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ operations: [] })
+  }));
   return lines.join('\n');
 }

@@ -50,7 +50,7 @@ export function renderMain() {
   if (api.isDemoMode()) { const demo = document.createElement('div'); demo.className = 'demo-banner'; demo.textContent = 'DEMO MODE — changes are not saved to Google Sheets'; container.appendChild(demo); }
   const hero = document.createElement('section'); hero.className = 'card hero-card';
   const brand = document.createElement('div'); brand.className = 'brand-row';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.4</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.6</div></div>');
   brand.append(title, button(`${e().emojiSettings} Settings`, 'btn-outline compact-button', () => navigate('settings')));
   const nav = document.createElement('div'); nav.className = 'date-navigation';
   nav.append(button(e().emojiPrevious, 'date-button', () => changeDay(-1), 'Previous day'));
@@ -67,11 +67,19 @@ export function renderMain() {
   daily.append(metric(e().emojiFood, 'Food', day.intake, e().dailyCalories), metric(e().emojiBurn, 'Burn', day.burn, e().dailyBurnTarget), metric(e().emojiDeficit, 'Deficit', day.net, `-${e().dailyDeficit}`, day.achieved));
   const weekly = document.createElement('article'); weekly.className = 'card summary-card'; weekly.innerHTML = '<h2>Weekly Summary</h2>';
   weekly.append(metric(e().emojiFood, 'Food', week.intake, week.weeklyFoodTarget), metric(e().emojiBurn, 'Burn', week.burn, week.weeklyBurnTarget), metric(e().emojiDeficit, 'Deficit', week.net, `-${week.weeklyDeficitTarget}`, week.achieved));
-  const selectedWeight = state.weights.find(weight => weight.date === selectedIso);
+  const selectedWeight = calc.getWeightForDate(state.weights, selectedIso);
   const weight = document.createElement('article'); weight.className = 'card summary-card weight-summary';
-  weight.innerHTML = `<h2>${e().emojiWeight} Weight</h2><div class="weight-value">${selectedWeight ? `${selectedWeight.value} kg` : '— kg'}</div><p class="subtle-label">${selectedWeight ? `${calc.calculateBMI(selectedWeight.value).toFixed(1)} BMI` : `No weight for ${dateUtils.formatDisplay(state.selectedDate)}`}</p>`;
+  if (selectedWeight) {
+    const carriedForward = selectedWeight.date !== selectedIso;
+    const recordedLabel = carriedForward
+      ? `Last recorded ${dateUtils.formatDisplay(selectedWeight.date)}`
+      : `Recorded ${dateUtils.formatDisplay(selectedWeight.date)}`;
+    weight.innerHTML = `<h2>${e().emojiWeight} Weight</h2><div class="weight-value">${selectedWeight.value} kg</div><p class="subtle-label">${calc.calculateBMI(selectedWeight.value).toFixed(1)} BMI<br>${recordedLabel}</p>`;
+  } else {
+    weight.innerHTML = `<h2>${e().emojiWeight} Weight</h2><div class="weight-value">— kg</div><p class="subtle-label">No weight recorded on or before ${dateUtils.formatDisplay(state.selectedDate)}</p>`;
+  }
   const weightActions = document.createElement('div'); weightActions.className = 'inline-actions'; weightActions.append(button(`${e().emojiWeight} Add`, 'btn-green', () => showWeightDialog()));
-  if (selectedWeight) weightActions.append(button(`${e().emojiEdit} Edit`, 'btn-outline', () => showWeightDialog(selectedWeight)));
+  if (selectedWeight) weightActions.append(button(`${e().emojiEdit} Edit`, 'btn-outline', () => showWeightDialog(selectedWeight), `Edit weight recorded ${dateUtils.formatDisplay(selectedWeight.date)}`));
   weight.appendChild(weightActions);
   const overview = document.createElement('section'); overview.className = 'overview-grid'; overview.append(daily, weekly, weight); container.appendChild(overview);
 
@@ -82,7 +90,7 @@ export function renderMain() {
   const foods = document.createElement('div'); foods.className = 'food-grid';
   const activeFoods = state.foods.filter(food => food.active);
   if (!activeFoods.length) foods.innerHTML = '<p class="empty-state">No visible saved food buttons. Manage them in Settings.</p>';
-  activeFoods.forEach(food => foods.append(button(`${e().emojiFood} ${food.name} · ${food.calories}`, 'saved-food-button', () => api.addEntry(state.selectedDate, food.name, food.calories))));
+  activeFoods.forEach(food => foods.append(button(`${food.emoji || e().emojiFood} ${food.name} · ${food.calories}`, 'saved-food-button', () => api.addEntry(state.selectedDate, food.name, food.calories))));
   quick.append(actions, foods); container.appendChild(quick);
 
   const entries = document.createElement('section'); entries.className = 'card entries-card'; entries.innerHTML = `<div class="card-heading"><div><h2>Entries</h2><p>${dateUtils.formatDisplay(state.selectedDate)}</p></div></div>`;
@@ -90,7 +98,8 @@ export function renderMain() {
   if (!state.entries.length) list.innerHTML = '<p class="empty-state">No entries for this day.</p>';
   state.entries.forEach(entry => {
     const row = document.createElement('div'); row.className = 'entry-row';
-    const entryIcon = Number(entry.calories) < 0 ? e().emojiBurn : e().emojiFood;
+    const foodMatch = state.foods.find(food => food.name === entry.name) || state.library.find(food => food.name === entry.name);
+    const entryIcon = Number(entry.calories) < 0 ? e().emojiBurn : (foodMatch?.emoji || e().emojiFood);
     const identity = document.createElement('div'); identity.className = 'entry-identity'; identity.innerHTML = `<strong>${entryIcon} ${entry.name || 'Unnamed entry (imported)'}</strong><span class="${Number(entry.calories) < 0 ? 'entry-burn' : 'entry-food'}">${Number(entry.calories) < 0 ? 'Burn' : 'Food'}${entry._pending ? ' · syncing' : ''}</span>`;
     const amount = document.createElement('span'); amount.className = 'entry-amount'; amount.textContent = `${Number(entry.calories) > 0 ? '+' : ''}${entry.calories}`;
     const rowActions = document.createElement('div'); rowActions.className = 'entry-actions';

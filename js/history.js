@@ -8,7 +8,9 @@ import { showEntryDialog, showWeightDialog } from './dialogs.js';
 const openMonths = new Set();
 const openWeeks = new Set();
 const openDays = new Set();
+const openWeightMonths = new Set();
 let lastAutoExpandedWeek = null;
+let lastAutoExpandedWeightMonth = null;
 
 function i() { return state.settings; }
 
@@ -172,7 +174,8 @@ export function renderHistory(autoExpandSelectedWeek = false) {
               days[day].forEach(entry => {
                 const row = document.createElement('div');
                 row.className = 'history-entry';
-                const icon = Number(entry.calories) < 0 ? i().emojiBurn : i().emojiFood;
+                const foodMatch = state.foods.find(food => food.name === entry.name) || state.library.find(food => food.name === entry.name);
+                const icon = Number(entry.calories) < 0 ? i().emojiBurn : (foodMatch?.emoji || i().emojiFood);
                 const actions = document.createElement('div');
                 actions.className = 'entry-actions';
                 actions.append(
@@ -197,20 +200,63 @@ export function renderHistory(autoExpandSelectedWeek = false) {
   const weights = document.createElement('section');
   weights.className = 'card weight-history';
   weights.innerHTML = `<div class="card-heading"><div><h2>${i().emojiWeight} Weight History</h2><p>Recorded weights and BMI</p></div></div>`;
-  if (!state.weights.length) weights.innerHTML += '<p class="empty-state">No weights recorded.</p>';
-  state.weights.forEach(weight => {
-    const row = document.createElement('div');
-    row.className = 'weight-row';
-    row.innerHTML = `<span>${dateUtils.formatDisplay(weight.date)}</span><strong>${weight.value} kg</strong><span>${calc.calculateBMI(weight.value).toFixed(1)} BMI</span>`;
-    const actions = document.createElement('div');
-    actions.className = 'entry-actions';
-    actions.append(
-      button(i().emojiEdit, 'icon-button', () => showWeightDialog(weight), 'Edit'),
-      button(i().emojiDelete, 'icon-button danger', () => api.deleteWeight(weight.id), 'Delete')
-    );
-    row.appendChild(actions);
-    weights.appendChild(row);
-  });
+
+  if (!state.weights.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'No weights recorded.';
+    weights.appendChild(empty);
+  } else {
+    const weightsByMonth = {};
+    state.weights.forEach(weight => {
+      const month = dateUtils.getMonthKey(weight.date);
+      (weightsByMonth[month] ||= []).push(weight);
+    });
+
+    const selectedWeight = calc.getWeightForDate(state.weights, selected);
+    const preferredWeightMonth = weightsByMonth[selectedMonth]
+      ? selectedMonth
+      : (selectedWeight ? dateUtils.getMonthKey(selectedWeight.date) : null);
+    if (preferredWeightMonth && (autoExpandSelectedWeek || preferredWeightMonth !== lastAutoExpandedWeightMonth)) {
+      openWeightMonths.add(preferredWeightMonth);
+      lastAutoExpandedWeightMonth = preferredWeightMonth;
+    }
+
+    const weightMonths = document.createElement('div');
+    weightMonths.className = 'weight-months';
+    Object.keys(weightsByMonth).sort().reverse().forEach(month => {
+      const monthBlock = document.createElement('section');
+      monthBlock.className = 'weight-month-block';
+      const expanded = openWeightMonths.has(month);
+      const monthHeader = button('', 'history-toggle weight-month-toggle', () => toggle(openWeightMonths, month));
+      monthHeader.innerHTML = `<strong>${dateUtils.formatMonthHeading(month)}</strong><span>${expanded ? '−' : '+'}</span>`;
+      monthBlock.appendChild(monthHeader);
+
+      if (expanded) {
+        const rows = document.createElement('div');
+        rows.className = 'weight-month-rows';
+        weightsByMonth[month]
+          .slice()
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .forEach(weight => {
+            const row = document.createElement('div');
+            row.className = 'weight-row';
+            row.innerHTML = `<span>${dateUtils.formatDisplay(weight.date)}</span><strong>${weight.value} kg</strong><span>${calc.calculateBMI(weight.value).toFixed(1)} BMI</span>`;
+            const actions = document.createElement('div');
+            actions.className = 'entry-actions';
+            actions.append(
+              button(i().emojiEdit, 'icon-button', () => showWeightDialog(weight), 'Edit'),
+              button(i().emojiDelete, 'icon-button danger', () => api.deleteWeight(weight.id), 'Delete')
+            );
+            row.appendChild(actions);
+            rows.appendChild(row);
+          });
+        monthBlock.appendChild(rows);
+      }
+      weightMonths.appendChild(monthBlock);
+    });
+    weights.appendChild(weightMonths);
+  }
   container.appendChild(weights);
   return container;
 }

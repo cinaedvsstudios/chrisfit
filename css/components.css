@@ -34,3 +34,21 @@
 .diagnostic-output { display: block; width: 100%; min-height: 10rem; margin-top: .65rem; resize: vertical; font: 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .release-notes p, .release-notes li { color: var(--color-text-secondary); font-size: .88rem; line-height: 1.45; }
 .release-notes ul { margin: .5rem 0 0 1.15rem; padding: 0; }
+
+.settings-note { color: var(--color-text-secondary); font-size: .86rem; line-height: 1.4; margin: .1rem 0 .75rem; }
+.food-add-row-emoji { grid-template-columns: 58px minmax(150px, 1fr) 100px auto; }
+.food-editor-row-emoji { grid-template-columns: 58px minmax(135px, 1fr) 88px auto; }
+.library-add-row, .library-editor-row {
+  display: grid;
+  grid-template-columns: 58px minmax(150px, 1fr) minmax(120px, .85fr) 90px auto;
+  gap: .45rem;
+  align-items: center;
+}
+.library-add-row { margin-bottom: .8rem; }
+.library-editor-row { padding: .55rem 0; border-top: 1px solid var(--color-divider); }
+.food-add-row-emoji > input:first-child,
+.food-editor-row-emoji > input:first-child,
+.library-add-row > input:first-child,
+.library-editor-row > input:first-child { text-align: center; font-size: 1.15rem; }
+.suggestion-button { display: flex; flex-direction: column; gap: .15rem; }
+.suggestion-button span { color: var(--color-text-secondary); font-size: .8rem; }

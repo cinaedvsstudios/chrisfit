@@ -38,3 +38,14 @@ export function estimateBurnToMidnight(currentTotalBurn, bmr, now = new Date()) 
   const remainingBaseline = (Number(bmr) / 24) * remainingHours;
   return { remainingHours, remainingBaseline: Math.round(remainingBaseline), total: Math.round(Number(currentTotalBurn) + remainingBaseline) };
 }
+
+
+/**
+ * Return the most recent weigh-in available on or before the selected date.
+ * Future weights are never carried backward when reviewing earlier dates.
+ */
+export function getWeightForDate(weights = [], selectedIso) {
+  return weights
+    .filter(weight => String(weight.date) <= String(selectedIso))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || null;
+}

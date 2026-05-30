@@ -51,11 +51,23 @@ export function showEntryDialog(mode = 'food', existing = null) {
       const query = search.input.value.trim().toLowerCase();
       suggestions.innerHTML = '';
       if (!query) return;
-      state.foods.filter(food => food.active && food.name.toLowerCase().includes(query)).slice(0, 8).forEach(food => {
+      const quickResults = state.foods
+        .filter(food => food.active && food.name.toLowerCase().includes(query))
+        .map(food => ({ ...food, source: 'Quick Button', amount: '' }));
+      const libraryResults = state.library
+        .filter(food => food.name.toLowerCase().includes(query) || food.amount.toLowerCase().includes(query))
+        .map(food => ({ ...food, source: 'Library' }));
+      [...quickResults, ...libraryResults].slice(0, 12).forEach(food => {
         const choice = document.createElement('button');
         choice.className = 'suggestion-button';
-        choice.textContent = `${icons().emojiFood} ${food.name} · ${food.calories}`;
-        choice.addEventListener('click', () => { name.input.value = food.name; calories.input.value = food.calories; suggestions.innerHTML = ''; });
+        const itemEmoji = food.emoji || icons().emojiFood;
+        const amount = food.amount ? ` · ${food.amount}` : '';
+        choice.innerHTML = `<strong>${itemEmoji} ${food.name}</strong><span>${amount} · ${food.calories} kcal · ${food.source}</span>`;
+        choice.addEventListener('click', () => {
+          name.input.value = food.name;
+          calories.input.value = food.calories;
+          suggestions.innerHTML = '';
+        });
         suggestions.appendChild(choice);
       });
     };
