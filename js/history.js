@@ -3,170 +3,64 @@ import * as api from './api.js';
 import * as dateUtils from './date-utils.js';
 import * as calc from './calculations.js';
 import { navigate } from './navigation.js';
+import { showEntryDialog, showWeightDialog } from './dialogs.js';
 
 const openMonths = new Set();
 const openWeeks = new Set();
 const openDays = new Set();
 let defaultsApplied = false;
-let weightEditMode = false;
-
-function toggle(set, key) {
-  set.has(key) ? set.delete(key) : set.add(key);
-  navigate('history');
+function i() { return state.settings; }
+function button(text, cls, fn, title='') { const b=document.createElement('button'); b.type='button'; b.className=cls; b.textContent=text; b.title=title; b.addEventListener('click', fn); return b; }
+function toggle(set, key) { set.has(key) ? set.delete(key) : set.add(key); navigate('history'); }
+function group(entries) {
+  const output = {};
+  entries.forEach(entry => { const month=dateUtils.getMonthKey(entry.date), week=dateUtils.getWeekStart(entry.date); output[month] ||= {}; output[month][week] ||= []; output[month][week].push(entry); });
+  return output;
 }
-
-function entriesByMonth(entries) {
-  const result = {};
-  entries.forEach(entry => {
-    const month = dateUtils.getMonthKey(entry.date);
-    const week = dateUtils.getWeekStart(entry.date);
-    result[month] ||= {};
-    result[month][week] ||= [];
-    result[month][week].push(entry);
+function summary(stats) {
+  const box=document.createElement('div'); box.className='history-summary';
+  [[i().emojiFood,'Total Food',stats.intake,stats.weeklyFoodTarget],[i().emojiBurn,'Total Burn',stats.burn,stats.weeklyBurnTarget],[i().emojiDeficit,'Total Deficit',stats.net,`-${stats.weeklyDeficitTarget}`]].forEach(([icon,label,value,target]) => {
+    const row=document.createElement('div'); row.innerHTML=`<span>${icon} ${label}</span><strong>${value} / ${target}</strong>`; box.appendChild(row);
   });
-  return result;
+  const estimate=document.createElement('p'); estimate.className='weight-estimate'; estimate.textContent=calc.estimateWeightText(stats.net); box.appendChild(estimate); return box;
 }
-
-function summaryRows(stats, weekly = false) {
-  const rows = document.createElement('div');
-  rows.className = 'history-summary';
-  const values = [
-    ['Total Food', stats.intake, weekly ? stats.weeklyFoodTarget : undefined],
-    ['Total Burn', stats.burn, undefined],
-    ['Total Deficit', stats.net, weekly ? `-${stats.weeklyDeficitTarget}` : undefined]
-  ];
-  values.forEach(([label, value, target]) => {
-    const row = document.createElement('div');
-    row.innerHTML = `<span>${label}</span><strong>${target === undefined ? value : `${value} / ${target}`}</strong>`;
-    rows.appendChild(row);
-  });
-  if (weekly) {
-    const estimate = document.createElement('p');
-    estimate.className = 'weight-estimate';
-    estimate.textContent = calc.estimateWeightText(stats.net);
-    rows.appendChild(estimate);
-  }
-  return rows;
-}
-
 export function renderHistory() {
-  const container = document.createElement('main');
-  container.className = 'screen history active page';
-
-  const header = document.createElement('section');
-  header.className = 'card section-header';
-  const back = document.createElement('button');
-  back.type = 'button';
-  back.className = 'btn-outline';
-  back.textContent = '← Back';
-  back.addEventListener('click', () => navigate('main'));
-  const heading = document.createElement('div');
-  heading.innerHTML = '<h1>History</h1><p class="subtle-label">Food, burn and weight over time</p>';
-  header.append(back, heading);
-  container.appendChild(header);
-
-  const allEntries = state.entriesFull || [];
-  const grouped = entriesByMonth(allEntries);
-  const todayMonth = dateUtils.getMonthKey(dateUtils.toIso(new Date()));
-  const currentWeek = dateUtils.getWeekStart(new Date());
-  const selectedWeek = dateUtils.getWeekStart(state.selectedDate);
-  if (!defaultsApplied) {
-    openMonths.add(todayMonth);
-    openMonths.add(dateUtils.getMonthKey(dateUtils.toIso(state.selectedDate)));
-    openWeeks.add(currentWeek);
-    openWeeks.add(selectedWeek);
-    defaultsApplied = true;
-  }
-
-  const foodHistory = document.createElement('section');
-  foodHistory.className = 'history-stack';
-  if (!Object.keys(grouped).length) {
-    foodHistory.innerHTML = '<section class="card"><p class="empty-state">No food or burn history yet.</p></section>';
-  }
-
+  const container=document.createElement('main'); container.className='screen history active page';
+  const header=document.createElement('section'); header.className='card section-header';
+  header.append(button(`${i().emojiPrevious} Back`, 'btn-outline', () => navigate('main')));
+  const title=document.createElement('div'); title.innerHTML=`<h1>${i().emojiHistory} History</h1><p class="subtle-label">Food, burn and weight over time</p>`; header.appendChild(title); container.appendChild(header);
+  const grouped=group(state.entriesFull);
+  if (!defaultsApplied) { const selected=dateUtils.toIso(state.selectedDate); openMonths.add(dateUtils.getMonthKey(selected)); openWeeks.add(dateUtils.getWeekStart(selected)); defaultsApplied=true; }
+  const stack=document.createElement('section'); stack.className='history-stack';
+  if (!Object.keys(grouped).length) stack.innerHTML='<section class="card"><p class="empty-state">No food or burn history yet.</p></section>';
   Object.keys(grouped).sort().reverse().forEach(month => {
-    const monthCard = document.createElement('section');
-    monthCard.className = 'card history-month';
-    const monthHeader = document.createElement('button');
-    monthHeader.type = 'button';
-    monthHeader.className = 'history-toggle month-toggle';
-    monthHeader.innerHTML = `<strong>${dateUtils.formatMonthHeading(month)}</strong><span>${openMonths.has(month) ? '−' : '+'}</span>`;
-    monthHeader.addEventListener('click', () => toggle(openMonths, month));
-    monthCard.appendChild(monthHeader);
-
-    if (openMonths.has(month)) {
-      Object.keys(grouped[month]).sort().reverse().forEach(week => {
-        const weekEntries = grouped[month][week];
-        const weekStats = calc.calculateWeek(weekEntries, state.settings);
-        const weekWrap = document.createElement('div');
-        weekWrap.className = 'week-block';
-        const weekHeader = document.createElement('button');
-        weekHeader.type = 'button';
-        weekHeader.className = 'history-toggle week-toggle';
-        weekHeader.innerHTML = `<span>Week ${dateUtils.formatDisplay(week)} – ${dateUtils.formatDisplay(dateUtils.getWeekEnd(week))}</span><strong>${openWeeks.has(week) ? '−' : '+'}</strong>`;
-        weekHeader.addEventListener('click', () => toggle(openWeeks, week));
-        weekWrap.appendChild(weekHeader);
-
-        if (openWeeks.has(week)) {
-          weekWrap.appendChild(summaryRows(weekStats, true));
-          const byDay = {};
-          weekEntries.forEach(entry => { (byDay[entry.date] ||= []).push(entry); });
-          Object.keys(byDay).sort().reverse().forEach(day => {
-            const dayKey = `${week}:${day}`;
-            const dayStats = calc.calculateDay(byDay[day], state.settings);
-            const dayHeader = document.createElement('button');
-            dayHeader.type = 'button';
-            dayHeader.className = 'history-day-row';
-            dayHeader.innerHTML = `<span class="day-label">${dateUtils.formatHistoryLabel(day)}</span><span>Food <strong>${dayStats.intake}</strong></span><span>Burn <strong>${dayStats.burn}</strong></span><span>Deficit <strong>${dayStats.net}</strong></span><b>${openDays.has(dayKey) ? '−' : '+'}</b>`;
-            dayHeader.addEventListener('click', () => toggle(openDays, dayKey));
-            weekWrap.appendChild(dayHeader);
-            if (openDays.has(dayKey)) {
-              const items = document.createElement('div');
-              items.className = 'history-entries';
-              byDay[day].forEach(entry => {
-                const row = document.createElement('div');
-                row.className = 'history-entry';
-                row.innerHTML = `<span>${entry.name || 'Unnamed entry (imported)'}</span><strong>${entry.calories > 0 ? '+' : ''}${entry.calories}</strong>`;
-                items.appendChild(row);
-              });
-              weekWrap.appendChild(items);
-            }
-          });
-        }
-        monthCard.appendChild(weekWrap);
-      });
-    }
-    foodHistory.appendChild(monthCard);
+    const card=document.createElement('section'); card.className='card history-month';
+    const mh=button('', 'history-toggle month-toggle', () => toggle(openMonths, month)); mh.innerHTML=`<strong>${dateUtils.formatMonthHeading(month)}</strong><span>${openMonths.has(month) ? '−' : '+'}</span>`; card.appendChild(mh);
+    if (openMonths.has(month)) Object.keys(grouped[month]).sort().reverse().forEach(week => {
+      const entries=grouped[month][week], stats=calc.calculateWeek(entries, i());
+      const wrap=document.createElement('div'); wrap.className='week-block';
+      const wh=button('', 'history-toggle week-toggle', () => toggle(openWeeks, week)); wh.innerHTML=`<span>Week ${dateUtils.formatDisplay(week)} – ${dateUtils.formatDisplay(dateUtils.getWeekEnd(week))}</span><strong>${openWeeks.has(week) ? '−' : '+'}</strong>`; wrap.appendChild(wh);
+      if (openWeeks.has(week)) {
+        wrap.appendChild(summary(stats));
+        const days={}; entries.forEach(entry => { (days[entry.date] ||= []).push(entry); });
+        Object.keys(days).sort().reverse().forEach(day => {
+          const key=`${week}:${day}`, totals=calc.calculateDay(days[day], i());
+          const dh=button('', 'history-day-row', () => toggle(openDays, key));
+          dh.innerHTML=`<span class="day-label">${dateUtils.formatHistoryLabel(day)}</span><span>${i().emojiFood} Food <strong>${totals.intake}</strong></span><span>${i().emojiBurn} Burn <strong>${totals.burn}</strong></span><span>${i().emojiDeficit} Deficit <strong>${totals.net}</strong></span><b>${openDays.has(key) ? '−' : '+'}</b>`; wrap.appendChild(dh);
+          if (openDays.has(key)) {
+            const list=document.createElement('div'); list.className='history-entries';
+            days[day].forEach(entry => { const row=document.createElement('div'); row.className='history-entry'; const icon=Number(entry.calories)<0?i().emojiBurn:i().emojiFood; const actions=document.createElement('div'); actions.className='entry-actions'; actions.append(button(i().emojiEdit,'icon-button',()=>showEntryDialog(Number(entry.calories)<0?'burn':'food',entry),'Edit'),button(i().emojiDelete,'icon-button danger',()=>api.deleteEntry(entry.id),'Delete')); row.innerHTML=`<span>${icon} ${entry.name || 'Unnamed entry (imported)'}</span><strong>${Number(entry.calories)>0?'+':''}${entry.calories}</strong>`; row.appendChild(actions); list.appendChild(row); });
+            wrap.appendChild(list);
+          }
+        });
+      }
+      card.appendChild(wrap);
+    });
+    stack.appendChild(card);
   });
-  container.appendChild(foodHistory);
-
-  const weights = document.createElement('section');
-  weights.className = 'card weight-history';
-  const weightHeading = document.createElement('div');
-  weightHeading.className = 'card-heading';
-  weightHeading.innerHTML = '<div><h2>Weight History</h2><p>Recorded weights and BMI</p></div>';
-  const edit = document.createElement('button');
-  edit.type = 'button';
-  edit.className = 'btn-outline compact-button';
-  edit.textContent = weightEditMode ? 'Done' : 'Edit';
-  edit.addEventListener('click', () => { weightEditMode = !weightEditMode; navigate('history'); });
-  weightHeading.appendChild(edit);
-  weights.appendChild(weightHeading);
+  container.appendChild(stack);
+  const weights=document.createElement('section'); weights.className='card weight-history'; weights.innerHTML=`<div class="card-heading"><div><h2>${i().emojiWeight} Weight History</h2><p>Recorded weights and BMI</p></div></div>`;
   if (!state.weights.length) weights.innerHTML += '<p class="empty-state">No weights recorded.</p>';
-  state.weights.forEach(weight => {
-    const row = document.createElement('div');
-    row.className = 'weight-row';
-    row.innerHTML = `<span>${dateUtils.formatDisplay(weight.date)}</span><strong>${weight.value} kg</strong><span>${calc.calculateBMI(weight.value).toFixed(1)} BMI</span>`;
-    if (weightEditMode) {
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'btn-text-danger';
-      remove.textContent = 'Delete';
-      remove.addEventListener('click', () => api.deleteWeight(weight.id));
-      row.appendChild(remove);
-    }
-    weights.appendChild(row);
-  });
-  container.appendChild(weights);
-  return container;
+  state.weights.forEach(weight => { const row=document.createElement('div'); row.className='weight-row'; row.innerHTML=`<span>${dateUtils.formatDisplay(weight.date)}</span><strong>${weight.value} kg</strong><span>${calc.calculateBMI(weight.value).toFixed(1)} BMI</span>`; const actions=document.createElement('div'); actions.className='entry-actions'; actions.append(button(i().emojiEdit,'icon-button',()=>showWeightDialog(weight),'Edit'),button(i().emojiDelete,'icon-button danger',()=>api.deleteWeight(weight.id),'Delete')); row.appendChild(actions); weights.appendChild(row); });
+  container.appendChild(weights); return container;
 }

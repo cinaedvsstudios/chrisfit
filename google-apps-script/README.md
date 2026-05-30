@@ -1,49 +1,24 @@
-# Google Apps Script
+# ChrisFit Google Apps Script Backend — v2.3
 
-This folder contains the server‑side code required to run the
-cloud backend for the ChrisFit web application.  The Apps Script
-connects to a Google Sheets workbook and exposes a REST‑like API
-providing CRUD operations for entries, foods, weights and settings as
-well as import/export functionality.  The web frontend uses these
-endpoints via simple HTTP requests (see `js/api.js`).
+This backend connects the ChrisFit browser app to the Google Sheet already created for the app.
 
-## Files
+## Upgrade from the working v2.2 deployment
 
-- **Code.gs** – the main Apps Script file.  Paste this into a new
-  Apps Script project attached to your Google Sheets document.  It
-  implements endpoints named `getSettings`, `saveSettings`,
-  `getFoods`, `addFood`, `deleteFood`, `getEntries`, `addEntry`,
-  `deleteEntry`, `getWeights`, `addWeight`, `deleteWeight`,
-  `exportData` and `importData`.  Each function reads from or writes
-  to the corresponding sheet.
-- **README.md** (this file) – explains how to set up the script and
-  configure the frontend.
+This release requires a new Apps Script deployment version because it adds Daily Burn Target, cloud-synchronised emoji choices, entry/weight editing and saved-food editing/order/visibility.
 
-## Setup Overview
+1. In the Google Sheet, open **Extensions → Apps Script**.
+2. Replace `Code.gs` with the complete `Code.gs` file in this folder.
+3. Click **Save**.
+4. Open **Deploy → Manage deployments**, edit the existing web app deployment, set **Version** to **New version**, and deploy.
+5. Keep the existing `/exec` URL. The web app configuration already points to it.
 
-1. **Prepare a Google Sheets workbook** with sheets named `entries`,
-   `foods`, `weights` and `settings` and column headers as described
-   in `docs/GOOGLE_SHEETS_SETUP.md`.  This workbook will store your
-   data.
-2. **Open the sheet** and choose **Extensions → Apps Script** to create
-   a new project.  Delete any boilerplate code.
-3. **Create a file** called `Code.gs` and copy the contents of
-   `google-apps-script/Code.gs` from this repository into it.  Update
-   the `SPREADSHEET_ID` constant to match your sheet ID.  Optionally
-   set a `TOKEN` constant to secure the API.
-4. **Deploy as a web app** via **Deploy → New deployment**, selecting
-   *Web app* and choosing **Execute as Me** and **Allow anyone with
-   the link**.  Copy the deployment URL – this becomes the `baseUrl`
-   in your frontend configuration (`js/config.js`).  If you set a
-   token in `Code.gs` you must also set `token: 'your‑token'` in the
-   config.
-5. **Configure the frontend** by creating `js/config.js` (see
-   `docs/GOOGLE_SHEETS_SETUP.md` for example content).  When `baseUrl`
-   is non‑empty the app will persist data to your sheet; when empty it
-   runs in demo mode using in‑memory arrays.
+On its first request, the updated backend expands the existing `foods` and `settings` headers automatically. Your existing entries and imported Android backup structure are retained.
 
-For detailed step‑by‑step instructions, refer to
-`docs/GOOGLE_SHEETS_SETUP.md` in this project.  That document
-includes screenshots and a full explanation of the sheet structure,
-deployment settings and how data flows between the frontend and the
-backend.
+## Tabs and fields
+
+- `entries`: `id`, `date`, `name`, `calories`
+- `weights`: `id`, `value`, `date`
+- `foods`: `id`, `name`, `calories`, `sortOrder`, `active`
+- `settings`: existing Android-compatible target fields plus `dailyBurnTarget`, emoji preferences and `googleSheetUrl`
+
+Android backup import still expects the phone backup's original three arrays: `entries`, `foods`, and `weights`. Importing replaces those three data sets, but does not reset the web-only settings row.

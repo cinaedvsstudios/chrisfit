@@ -1,68 +1,28 @@
-# Handover Report
+# ChrisFit Web v2.3 Handover
 
-## Summary
+## Implemented in this release
 
-This report accompanies the delivery of the **ChrisFit Web** project.  The
-goal was to reproduce the behaviour of the Android ChrisFit app in a
-browser using simple technologies.  The work was conducted by reading
-the Android source code and mapping its logic, data model and UI
-structure into a set of HTML/CSS/JavaScript modules and a Google
-Sheets/Apps Script backend.  No files in the original GitHub repository
-were modified or committed during this process.
+- A responsive browser interface backed by Google Sheets through Google Apps Script.
+- Positive food entries and negative burn/BMR/estimated-burn entries, preserving Android phone backup compatibility.
+- Fast one-tap repeated saved food logging.
+- Add Food with search suggestions from saved foods, Add Burn, one-tap BMR and BMR-paced Estimate Total Burn to Midnight.
+- Editable daily/history entries and editable weights using stable cloud row IDs.
+- Saved-food management: add, edit, reorder, hide/show and delete.
+- Daily Food, Burn and Deficit targets including a new Daily Burn Target and fixed seven-day weekly targets.
+- Month → Week → Day history, readable weekly summaries and estimated change wording.
+- Configurable emoji labels stored in Google Sheets; food defaults to broccoli (`🥦`).
+- Desktop Settings padding, direct Google Sheet link, theme selector, sync debugging and the repository-root `icon.png` logo reference.
 
-## Features implemented
+## Backend update required
 
-* **Daily tracking** with date navigation, summary (intake, burn, net),
-  quick‑add grid (history, weight, other, BMR, foods) and entry list with
-  delete actions.  Calculations replicate the Android logic including
-  negative calories for burns and colour thresholds for deficits.
-* **Weight tracking** with a dialog for entering weight on the selected
-  date, BMI calculation assuming a fixed 1.8 m height and a list of
-  recorded weights on both the main and history screens.
-* **History view** grouping all entries by week and by day, with
-  collapsible sections and weekly/daily summaries.  An additional
-  weight history section mirrors the Android design.
-* **Settings screen** with text inputs for daily calories, daily
-  deficit and BMR; ability to add and delete food buttons; JSON
-  export/import compatible with the Android backup format; and a
-  “Reset All Data” function.
-* **Backend integration** using Google Sheets and Apps Script.  A demo
-  mode provides in‑memory storage when no backend is configured.
-* **Responsive design** for mobile and desktop, plus dark-theme CSS overrides.
-* **Configuration/backend corrections**: the browser and Apps Script now use matching action-based requests, and demo mode is visibly marked.
+v2.3 includes a replacement `google-apps-script/Code.gs`. It preserves the existing `/exec` URL when deployed as a **new version** of the current deployment and automatically extends the sheet headers required for editing, visibility/order, Daily Burn Target and emojis.
 
-## Differences from Android
+## Not included yet
 
-| Aspect | Android | Web | Reason |
-| --- | --- | --- | --- |
-| Drag handle for quick‑add grid | Users can drag a handle to resize the grid height 【1†L710-L733】 | Grid has a fixed height | Complexity vs. benefit; optional for future enhancement. |
-| Weekly totals on main screen | A bug results in the weekly totals mirroring the daily values 【1†L586-L589】 | Web retains this behaviour (totals based on current day) | Maintains fidelity with the inspected source. |
-| Splash screen asset | References a `splashicon` drawable | Uses emoji icons; original asset missing from repo | The repository lacked the image asset. |
-| Dark mode toggle | Follows system setting automatically | CSS variables defined; user toggle not exposed | Simplicity; could be added later. |
-| Date picker | Android uses `DatePickerDialog` | Web uses a simple prompt for ISO date | Browser support limitations without third‑party libraries. |
+- Android Health Connect automatic previous-day burn sync.
+- Bulk paste/add entry tooling.
+- Automated correction of historical blank names; these are intentionally left as imported historical records.
 
-## Testing performed
+## Asset note
 
-A corrective review found and repaired concrete wiring errors in the generated project: text inputs for entry/food names, configuration loading, Apps Script request routing, unsupported delete requests and the invalid Apps Script response-code call. JavaScript syntax checks and demo data-layer CRUD/export tests were performed locally.
-
-A real Google Apps Script deployment and live Google Sheets synchronisation test has **not** yet been performed. That requires the project owner to paste/deploy `Code.gs`, enter the deployed `/exec` URL in `js/config.js`, and then perform a small live write/read test before importing real backup data.
-
-## Next steps
-
-* **Deploy the backend** – follow `docs/GOOGLE_SHEETS_SETUP.md` to create
-  the Google Sheets and Apps Script.  Deploy the script as a web app and
-  provide the URL in `js/config.js`.
-* **Host the web app** – publish the `chrisfit-web` folder to a static
-  host such as GitHub Pages or Netlify.  See
-  `docs/GITHUB_PAGES_SETUP.md` for guidance.
-* **Enhancements** – optional improvements include implementing the drag
-  handle for the action grid, adding a dark mode toggle in settings,
-  refining the date picker, and integrating swipe gestures for date
-  navigation.
-
-## Acknowledgements
-
-This work is based exclusively on the open‑source ChrisFit Android
-repository.  All calculations, UI structure and data models were
-derived from the Kotlin source files and documentation provided in that
-repository.  No proprietary information was used.
+The application references `icon.png` in the web root because the user confirmed that the real logo already exists there. The connector was unavailable during packaging, so the image bytes are not duplicated in this ZIP; retain the existing root `icon.png` when uploading the updated files.

@@ -1,13 +1,17 @@
 @media (max-width: 720px) {
-  .page { padding: 0.65rem 0.65rem 5.25rem; gap: 0.7rem; }
+  .page { padding: .65rem .65rem 5.3rem; gap: .7rem; }
+  .brand-row { align-items: flex-start; }
+  .selected-date strong { font-size: 1.6rem; }
   .overview-grid { grid-template-columns: 1fr; }
-  .summary-card { padding: 0.85rem; }
-  .history-day-row {
-    grid-template-columns: 1fr 1fr;
-    row-gap: 0.35rem;
-  }
+  .history-day-row { grid-template-columns: 1fr 1fr; row-gap: .35rem; }
   .history-day-row .day-label { grid-column: 1 / -1; }
+  .weight-row { grid-template-columns: 1fr 1fr; }
+  .weight-row .entry-actions { grid-column: 1 / -1; }
+  .food-add-row, .food-editor-row { grid-template-columns: 1fr 90px; }
+  .food-add-row button, .food-editor-actions { grid-column: 1 / -1; }
+  .emoji-grid { grid-template-columns: repeat(2,1fr); }
 }
 @media (min-width: 721px) {
-  .weight-summary { min-width: 180px; }
+  .settings-page { max-width: 770px; padding-left: 1.6rem; padding-right: 1.6rem; }
+  .weight-summary { min-width: 190px; }
 }

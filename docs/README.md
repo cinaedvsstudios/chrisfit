@@ -1,57 +1,23 @@
-# ChrisFit Web
+# ChrisFit Web v2.3
 
-This folder contains a **web version** of the ChrisFit Android app.  The goal
-of this project is to replicate the existing Android functionality and
-structure as closely as possible using plain HTML, CSS and JavaScript.  The
-web version retains the same workflow, data concepts, calculations and
-visual identity wherever technically practical.
+ChrisFit Web is the shared-data browser interface for ChrisFit. It keeps the Android app's fast repeated saved-item workflow while presenting a cleaner responsive card layout and storing data in Google Sheets through Google Apps Script.
 
-## Running locally
+## Key workflow
 
-Because the application uses ES modules it must be served from a web server
-rather than opened directly from the filesystem.  In a terminal run the
-following commands from the root of this repository (outside of the ZIP) to
-start a simple development server:
+- Food entries are positive calories; burn, BMR and total-burn estimates are negative calories.
+- Dates are stored internally as `yyyy-MM-dd` and displayed/typed as `DD-MM-YYYY`.
+- Tap a saved food button repeatedly to record repeated units quickly.
+- Use **Add Burn → Estimate Total Burn to Midnight** to estimate the final day total by adding only the remaining hours at BMR pace.
 
-```bash
-cd chrisfit-web
-python3 -m http.server 8000
-```
+## Deployment update for v2.3
 
-Then open http://localhost:8000 in your browser.  The app will operate in
-demo mode until you provide a Google Apps Script backend URL in
-`js/config.js`.
+This version requires both:
 
-## Configuration
+1. Uploading the complete web files to the GitHub Pages repository root. Preserve the existing root `icon.png`, which the app displays beside the title.
+2. Replacing Apps Script `Code.gs` with the bundled v2.3 backend and redeploying the existing deployment as a **New version**. Keep the same `/exec` URL.
 
-Open the included `js/config.js` and fill in
-your Apps Script endpoint and optional token.  Without these values the application visibly runs in demo mode using in-memory storage only; changes are not saved to Google Sheets.  See
-`docs/GOOGLE_SHEETS_SETUP.md` for instructions on deploying the backend.
+The backend automatically extends the existing Google Sheet with Daily Burn Target, emoji preferences and food-order/visibility columns; you do not need to recreate your spreadsheet.
 
-## Folder structure
+## Real phone backup import
 
-- `index.html` – entry point for the web app.
-- `css/` – modular CSS files defining variables, layout, components, history
-  view, dialog styles, dark mode and responsive tweaks.
-- `js/` – JavaScript modules implementing state management, API wrappers,
-  date and calculation utilities and the main application logic.
-- `assets/` – place to store copied or adapted Android assets.  The
-  original ChrisFit repository did not include image resources, so
-  placeholder emojis are used where necessary.
-- `google-apps-script/` – stub for the Apps Script backend (see
-  `docs/GOOGLE_SHEETS_SETUP.md`).
-- `google-sheets-templates/` – CSV and XLSX templates matching the Room
-  entities defined in the Android project.
-- `docs/` – detailed documentation on source audit, migration steps,
-  deployment and handover.
-
-## Limitations
-
-This implementation is a **faithful clone** of the Android code base
-inspected at the time of writing.  If future Android versions add or
-modify functionality the web version may need to be updated accordingly.
-
-Dark mode support is implemented via a CSS class on the `<body>` element.
-You can toggle it manually by adding or removing the `dark` class in
-developer tools.  Wiring a proper toggle into the settings screen can be
-done as a future enhancement.
+The original Android JSON backup format is still supported. Import replaces entries, saved food rows and weight rows but leaves web-only settings and emoji choices intact. Always retain the original phone backup as your safety copy.

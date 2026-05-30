@@ -1,5 +1,5 @@
-The original ChrisFit repository did not include image assets such as
-`ic_launcher_foreground`, `ic_launcher_background` or `splashicon`.  Until
-these files are provided you can place your own icons in this folder and
-reference them from the HTML/CSS as needed.  Emoji icons are used by
-default in the web application to avoid broken links.
+# ChrisFit assets
+
+The live GitHub Pages repository already contains the real transparent app logo as `/icon.png` in the repository root. ChrisFit Web v2.3 references that existing root asset for the header logo and browser icon.
+
+When moving this package to a new repository, copy the original `icon.png` into the web root beside `index.html`.

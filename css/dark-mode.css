@@ -1,14 +1,2 @@
-body.dark {
-  --color-background: #0f171a;
-  --color-surface: #192428;
-  --color-surface-soft: #213238;
-  --color-divider: #31454b;
-  --color-primary: #71d5c9;
-  --color-primary-soft: #173d3a;
-  --color-text-primary: #f1f5f5;
-  --color-text-secondary: #b3c2c5;
-  --color-shadow: rgba(0,0,0,0.2);
-}
-body.dark input, body.dark select, body.dark textarea {
-  background: #132024;
-}
+body.dark { --color-background:#0f171a; --color-surface:#192428; --color-surface-soft:#213238; --color-divider:#31454b; --color-primary:#71d5c9; --color-primary-soft:#173d3a; --color-text-primary:#f1f5f5; --color-text-secondary:#b3c2c5; --color-shadow:rgba(0,0,0,.2); }
+body.dark input, body.dark select, body.dark textarea { background:#132024; }

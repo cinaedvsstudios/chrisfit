@@ -1,1 +1,2 @@
-id,dailyCalories,dailyDeficit,bmr
+id,dailyCalories,dailyDeficit,bmr,dailyBurnTarget,emojiFood,emojiBurn,emojiDeficit,emojiWeight,emojiBmr,emojiHistory,emojiSettings,emojiPrevious,emojiNext,emojiEdit,emojiDelete,emojiSheet,emojiSearch,googleSheetUrl
+1,1500,500,2000,2500,🥦,🔥,📉,⚖️,⚡,📜,⚙️,⬅️,➡️,✏️,🗑️,📊,🔎,https://docs.google.com/spreadsheets/d/1rizJJ7oC2VbZPKYuMnlYD5WhhmEvLPcJM1OY_jD0bVM/edit?usp=sharing

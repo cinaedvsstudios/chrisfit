@@ -1,296 +1,64 @@
-/*
-  settings.js
-
-  Settings, saved food buttons, backups and connection diagnostics for ChrisFit.
-  The Connection Test is intentionally non-destructive: it reads data and sends
-  an empty batch request only, so it can test sync without creating rows.
-*/
-
-import { state } from './state.js';
+import { state, defaultSettings, showToast } from './state.js';
 import * as api from './api.js';
 import { navigate } from './navigation.js';
 import { getThemePreference, setThemePreference } from './theme.js';
 
-function createLabeledInput(labelText, defaultValue = '', type = 'number') {
-  const container = document.createElement('div');
-  container.className = 'form-group';
-  const label = document.createElement('label');
-  label.textContent = labelText;
-  const input = document.createElement('input');
-  input.type = type;
-  input.value = defaultValue;
-  input.style.width = '100%';
-  container.appendChild(label);
-  container.appendChild(input);
-  return { container, input };
+function s() { return state.settings; }
+function field(label, value, type='text') { const wrap=document.createElement('label'); wrap.className='form-group'; const span=document.createElement('span'); span.textContent=label; const input=document.createElement('input'); input.type=type; input.value=value ?? ''; wrap.append(span,input); return { wrap,input }; }
+function button(text, cls='btn-green') { const b=document.createElement('button'); b.type='button'; b.className=cls; b.textContent=text; return b; }
+function panel(title) { const section=document.createElement('section'); section.className='settings-card'; const h=document.createElement('h3'); h.textContent=title; section.appendChild(h); return section; }
+function saveFoodRow(food) {
+  const row=document.createElement('div'); row.className='food-editor-row';
+  const name=document.createElement('input'); name.type='text'; name.value=food.name; name.setAttribute('aria-label','Food name');
+  const cal=document.createElement('input'); cal.type='number'; cal.min='1'; cal.value=food.calories; cal.setAttribute('aria-label','Calories');
+  const controls=document.createElement('div'); controls.className='food-editor-actions';
+  const up=button('⬆️','icon-button'), down=button('⬇️','icon-button'), visible=button(food.active ? '👁️ Hide' : '🙈 Show','btn-outline small-button'), save=button('💾 Save','btn-green small-button'), remove=button(s().emojiDelete,'icon-button danger');
+  up.addEventListener('click',()=>api.reorderFood(food.id,-1)); down.addEventListener('click',()=>api.reorderFood(food.id,1));
+  visible.addEventListener('click',()=>api.updateFood(food.id,{...food,active:!food.active}));
+  save.addEventListener('click',()=>{ try { api.updateFood(food.id,{...food,name:name.value,calories:Number(cal.value)}); showToast('Saved food updated','success'); } catch(error) { showToast(error.message,'error'); } });
+  remove.addEventListener('click',()=>{ if(confirm(`Delete saved food button “${food.name}”?`)) api.deleteFood(food.id); });
+  controls.append(up,down,visible,save,remove); row.append(name,cal,controls); return row;
 }
-
-function fullWidthButton(text, className = 'btn-green') {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.textContent = text;
-  button.className = className;
-  button.style.width = '100%';
-  button.style.marginTop = '0.5rem';
-  return button;
-}
-
-function createConnectionDiagnostics() {
-  const panel = document.createElement('section');
-  panel.className = 'diagnostic-panel';
-
-  const heading = document.createElement('h3');
-  heading.textContent = 'Connection Debug';
-  panel.appendChild(heading);
-
-  const help = document.createElement('p');
-  help.className = 'diagnostic-help';
-  help.textContent = 'Runs read-only checks plus an empty sync request. It will not add, import or delete spreadsheet rows.';
-  panel.appendChild(help);
-
-  const info = api.getConnectionInfo();
-  const status = document.createElement('div');
-  status.className = 'diagnostic-status';
-  status.textContent = `Mode: ${info.mode} · Pending local changes: ${info.pendingChanges}`;
-  panel.appendChild(status);
-
-  const endpoint = document.createElement('div');
-  endpoint.className = 'diagnostic-endpoint';
-  endpoint.textContent = `Endpoint: ${info.endpoint}`;
-  panel.appendChild(endpoint);
-
-  const output = document.createElement('textarea');
-  output.className = 'diagnostic-output';
-  output.readOnly = true;
-  output.placeholder = 'Press “Run Connection Test” and copy the report back into chat.';
-  panel.appendChild(output);
-
-  const runButton = fullWidthButton('Run Connection Test', 'btn-blue');
-  runButton.addEventListener('click', async () => {
-    runButton.disabled = true;
-    runButton.textContent = 'Testing…';
-    output.value = 'Running connection diagnostics…';
-    try {
-      output.value = await api.runConnectionDebugTest();
-    } catch (error) {
-      output.value = `Debug test crashed before completing:\n${error && error.stack ? error.stack : String(error)}`;
-    } finally {
-      runButton.disabled = false;
-      runButton.textContent = 'Run Connection Test';
-    }
-  });
-  panel.appendChild(runButton);
-
-  const copyButton = fullWidthButton('Copy Debug Report', 'btn-outline');
-  copyButton.addEventListener('click', async () => {
-    if (!output.value.trim()) {
-      alert('Run the connection test first.');
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(output.value);
-      copyButton.textContent = 'Copied ✓';
-      window.setTimeout(() => { copyButton.textContent = 'Copy Debug Report'; }, 1800);
-    } catch (_) {
-      output.focus();
-      output.select();
-      alert('Copy was blocked by the browser. The report is selected; press Ctrl+C.');
-    }
-  });
-  panel.appendChild(copyButton);
-
-  if (info.pendingChanges > 0) {
-    const warning = document.createElement('p');
-    warning.className = 'diagnostic-warning';
-    warning.textContent = `There are ${info.pendingChanges} unsynced browser-side changes waiting to retry. Clear them before fixing sync if they were only test entries.`;
-    panel.appendChild(warning);
-
-    const discard = fullWidthButton(`Discard ${info.pendingChanges} Unsynced Local Change${info.pendingChanges === 1 ? '' : 's'}`, 'btn-red');
-    discard.addEventListener('click', () => {
-      const confirmed = confirm('Discard the queued unsynced changes visible in this browser? This does not delete rows already saved in Google Sheets.');
-      if (!confirmed) return;
-      api.discardPendingChanges();
-      status.textContent = 'Mode: google-apps-script · Pending local changes: 0';
-      warning.remove();
-      discard.remove();
-    });
-    panel.appendChild(discard);
-  }
-  return panel;
-}
-
 export function renderSettings() {
-  const container = document.createElement('div');
-  container.className = 'screen settings active';
+  const container=document.createElement('main'); container.className='screen settings active page settings-page';
+  const header=document.createElement('section'); header.className='card section-header settings-header';
+  const back=button(`${s().emojiPrevious} Back`,'btn-outline'); back.addEventListener('click',()=>navigate('main'));
+  const title=document.createElement('div'); title.innerHTML=`<h1>${s().emojiSettings} Settings</h1><p class="subtle-label">Targets, appearance and data controls</p>`; header.append(back,title); container.appendChild(header);
+  const content=document.createElement('div'); content.className='settings-content';
 
-  const header = document.createElement('div');
-  header.className = 'header';
-  const titleRow = document.createElement('div');
-  titleRow.style.display = 'flex';
-  titleRow.style.justifyContent = 'space-between';
-  titleRow.style.alignItems = 'center';
-  const title = document.createElement('h2');
-  title.textContent = 'Settings';
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.textContent = '✕';
-  closeBtn.className = 'btn-outline';
-  closeBtn.addEventListener('click', () => navigate('main'));
-  titleRow.append(title, closeBtn);
-  header.appendChild(titleRow);
-  container.appendChild(header);
+  const link=panel(`${s().emojiSheet} Data Sheet`);
+  const sheetLink=document.createElement('a'); sheetLink.className='sheet-link'; sheetLink.href=s().googleSheetUrl || defaultSettings.googleSheetUrl; sheetLink.target='_blank'; sheetLink.rel='noopener'; sheetLink.textContent=`${s().emojiSheet} Open Google Sheet`;
+  link.appendChild(sheetLink); content.appendChild(link);
 
-  const content = document.createElement('div');
-  content.className = 'settings-content';
+  const targets=panel('🎯 Targets');
+  const dailyFood=field('Daily Food Target',s().dailyCalories,'number'), dailyBurn=field('Daily Burn Target',s().dailyBurnTarget,'number'), dailyDeficit=field('Daily Deficit Target',s().dailyDeficit,'number'), bmr=field('BMR',s().bmr,'number');
+  targets.append(dailyFood.wrap,dailyBurn.wrap,dailyDeficit.wrap,bmr.wrap);
+  const saveTargets=button('💾 Save Targets'); saveTargets.addEventListener('click',()=>{ api.saveSettings({...s(),dailyCalories:Number(dailyFood.input.value),dailyBurnTarget:Number(dailyBurn.input.value),dailyDeficit:Number(dailyDeficit.input.value),bmr:Number(bmr.input.value)}); showToast('Targets saved','success'); }); targets.appendChild(saveTargets); content.appendChild(targets);
 
-  content.appendChild(createConnectionDiagnostics());
+  const appearance=panel('🎨 Appearance');
+  const theme=document.createElement('select'); ['system','light','dark'].forEach(value=>{ const option=document.createElement('option'); option.value=value; option.textContent=value[0].toUpperCase()+value.slice(1); theme.appendChild(option); }); theme.value=getThemePreference(); theme.addEventListener('change',()=>setThemePreference(theme.value));
+  const themeLabel=document.createElement('label'); themeLabel.className='form-group'; themeLabel.innerHTML='<span>Theme</span>'; themeLabel.appendChild(theme); appearance.appendChild(themeLabel);
+  const emojiFields = [ ['emojiFood','Food'],['emojiBurn','Burn'],['emojiDeficit','Deficit'],['emojiWeight','Weight'],['emojiBmr','BMR'],['emojiHistory','History'],['emojiSettings','Settings'],['emojiPrevious','Previous Day'],['emojiNext','Next Day'],['emojiEdit','Edit'],['emojiDelete','Delete'],['emojiSheet','Google Sheet'],['emojiSearch','Search'] ];
+  const emojiGrid=document.createElement('div'); emojiGrid.className='emoji-grid'; const inputs={};
+  emojiFields.forEach(([key,label])=>{ const item=field(label,s()[key],'text'); item.input.maxLength=8; inputs[key]=item.input; emojiGrid.appendChild(item.wrap); }); appearance.appendChild(emojiGrid);
+  const saveEmoji=button('💾 Save Emoji Choices'); saveEmoji.addEventListener('click',()=>{ const changes={}; emojiFields.forEach(([key])=>{ changes[key]=inputs[key].value || defaultSettings[key]; }); api.saveSettings({...s(),...changes}); showToast('Emoji choices saved','success'); }); appearance.appendChild(saveEmoji); content.appendChild(appearance);
 
-  const appearancePanel = document.createElement('section');
-  appearancePanel.className = 'settings-card';
-  const appearanceHeader = document.createElement('h3');
-  appearanceHeader.textContent = 'Appearance';
-  const themeLabel = document.createElement('label');
-  themeLabel.className = 'form-group';
-  const themeText = document.createElement('span');
-  themeText.textContent = 'Theme';
-  const themeSelect = document.createElement('select');
-  ['system', 'light', 'dark'].forEach(value => {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = value.charAt(0).toUpperCase() + value.slice(1);
-    themeSelect.appendChild(option);
-  });
-  themeSelect.value = getThemePreference();
-  themeSelect.addEventListener('change', () => setThemePreference(themeSelect.value));
-  themeLabel.append(themeText, themeSelect);
-  appearancePanel.append(appearanceHeader, themeLabel);
-  content.appendChild(appearancePanel);
+  const foods=panel(`${s().emojiFood} Saved Food Buttons`);
+  const addRow=document.createElement('div'); addRow.className='food-add-row'; const newName=document.createElement('input'); newName.placeholder='New saved food'; const newCal=document.createElement('input'); newCal.type='number'; newCal.placeholder='Calories'; newCal.min='1'; const add=button(`${s().emojiFood} Add`); add.addEventListener('click',()=>{ try { api.addFood(newName.value,Number(newCal.value)); newName.value=''; newCal.value=''; } catch(error){ showToast(error.message,'error'); }}); addRow.append(newName,newCal,add); foods.appendChild(addRow);
+  state.foods.forEach(food=>foods.appendChild(saveFoodRow(food))); content.appendChild(foods);
 
-  const targetsPanel = document.createElement('section');
-  targetsPanel.className = 'settings-card';
-  const targetsHeader = document.createElement('h3');
-  targetsHeader.textContent = 'Targets';
-  targetsPanel.appendChild(targetsHeader);
+  const backup=panel('💾 Backup & Data');
+  const exportButton=button('📤 Export Android-Compatible Backup','btn-outline full-button'); exportButton.addEventListener('click',async()=>{ const data=await api.exportData(); const link=document.createElement('a'); link.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})); link.download='chrisfit-backup.json'; link.click(); setTimeout(()=>URL.revokeObjectURL(link.href),500); });
+  const importButton=button('📥 Import Phone Backup','btn-outline full-button'); importButton.addEventListener('click',()=>{ const input=document.createElement('input'); input.type='file'; input.accept='application/json'; input.addEventListener('change',async()=>{ const file=input.files[0]; if(!file) return; try { const data=JSON.parse(await file.text()); const count=`${data.entries?.length||0} entries, ${data.foods?.length||0} saved foods and ${data.weights?.length||0} weights`; if(confirm(`Import will replace entries, saved foods and weights with ${count}. Settings will remain. Continue?`)){ await api.importData(data); showToast('Phone backup imported','success',3500); }} catch(error){ showToast(error.message||'Import failed','error',4000); }}); input.click(); });
+  const reset=button('⚠️ Reset Entries, Foods & Weights','btn-red full-button'); reset.addEventListener('click',async()=>{ if(confirm('Delete all entries, saved foods and weights from the cloud sheet?')) { await api.resetAllData(); showToast('Tracking data reset','success'); }});
+  backup.append(exportButton,importButton,reset); content.appendChild(backup);
 
-  const calInput = createLabeledInput('Daily Food Target', state.settings?.dailyCalories ?? 1500);
-  const deficitInput = createLabeledInput('Daily Deficit Target', state.settings?.dailyDeficit ?? 500);
-  const bmrInput = createLabeledInput('BMR', state.settings?.bmr ?? 2000);
-  targetsPanel.append(calInput.container, deficitInput.container, bmrInput.container);
-  const targetNote = document.createElement('p');
-  targetNote.className = 'settings-note';
-  targetNote.textContent = 'Daily Burn Target will be added in the next data-schema upgrade; this update does not alter your Google Sheet structure.';
-  targetsPanel.appendChild(targetNote);
+  const debug=panel('🛠️ Connection Debug'); debug.classList.add('diagnostic-panel');
+  const info=api.getConnectionInfo(); const status=document.createElement('p'); status.className='diagnostic-status'; status.textContent=`Mode: ${info.mode} · Pending local changes: ${info.pendingChanges} · State: ${info.syncPhase}`; const endpoint=document.createElement('p'); endpoint.className='diagnostic-endpoint'; endpoint.textContent=`Endpoint: ${info.endpoint}`;
+  const output=document.createElement('textarea'); output.className='diagnostic-output'; output.readOnly=true; output.placeholder='Run the connection test to see exact results.';
+  const run=button('▶️ Run Connection Test','btn-outline'); run.addEventListener('click',async()=>{ output.value='Testing…'; output.value=await api.runConnectionDebugTest(); }); const copy=button('📋 Copy Debug Report','btn-outline'); copy.addEventListener('click',async()=>{ await navigator.clipboard.writeText(output.value); showToast('Debug report copied','success'); }); const discard=button('🧹 Discard Unsynced Local Changes','btn-red'); discard.addEventListener('click',()=>api.discardPendingChanges());
+  debug.append(status,endpoint,run,copy,discard,output); content.appendChild(debug);
 
-  const saveBtn = fullWidthButton('Save Settings');
-  saveBtn.addEventListener('click', async () => {
-    const settings = {
-      dailyCalories: parseInt(calInput.input.value, 10) || 1500,
-      dailyDeficit: parseInt(deficitInput.input.value, 10) || 500,
-      bmr: parseInt(bmrInput.input.value, 10) || 2000
-    };
-    await api.saveSettings(settings);
-    alert('Settings queued to save');
-  });
-  targetsPanel.appendChild(saveBtn);
-  content.appendChild(targetsPanel);
-
-  const foodsPanel = document.createElement('section');
-  foodsPanel.className = 'settings-card';
-  const foodHeader = document.createElement('h3');
-  foodHeader.textContent = 'Food Buttons';
-  foodHeader.style.marginTop = '1rem';
-  foodsPanel.appendChild(foodHeader);
-  const foodNameInput = createLabeledInput('Food Name', '', 'text');
-  const foodCalInput = createLabeledInput('Calories');
-  foodsPanel.append(foodNameInput.container, foodCalInput.container);
-  const addFoodBtn = fullWidthButton('Add Food');
-  addFoodBtn.addEventListener('click', async () => {
-    const name = foodNameInput.input.value.trim();
-    const calories = parseInt(foodCalInput.input.value, 10);
-    if (!name || Number.isNaN(calories)) {
-      alert('Enter name and calories');
-      return;
-    }
-    await api.addFood(name, calories);
-    foodNameInput.input.value = '';
-    foodCalInput.input.value = '';
-  });
-  foodsPanel.appendChild(addFoodBtn);
-
-  state.foods.forEach(food => {
-    const row = document.createElement('div');
-    row.className = 'settings-food-row';
-    const label = document.createElement('span');
-    label.textContent = `${food.name} (${food.calories})`;
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.textContent = 'X';
-    del.className = 'btn-red';
-    del.addEventListener('click', async () => api.deleteFood(food.id));
-    row.append(label, del);
-    foodsPanel.appendChild(row);
-  });
-
-  content.appendChild(foodsPanel);
-
-  const backupPanel = document.createElement('section');
-  backupPanel.className = 'settings-card';
-  const backupHeader = document.createElement('h3');
-  backupHeader.textContent = 'Backup & Data';
-  backupPanel.appendChild(backupHeader);
-
-  const exportBtn = fullWidthButton('📤 Export Data');
-  exportBtn.addEventListener('click', async () => {
-    const data = await api.exportData();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'backup.json';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  });
-  backupPanel.appendChild(exportBtn);
-
-  const importBtn = fullWidthButton('📥 Import Data');
-  importBtn.addEventListener('click', async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json';
-    input.addEventListener('change', async () => {
-      const file = input.files[0];
-      if (!file) return;
-      try {
-        const data = JSON.parse(await file.text());
-        const entryCount = Array.isArray(data.entries) ? data.entries.length : 0;
-        const foodCount = Array.isArray(data.foods) ? data.foods.length : 0;
-        const weightCount = Array.isArray(data.weights) ? data.weights.length : 0;
-        const confirmed = confirm(`This will replace the current sheet data with ${entryCount} entries, ${foodCount} saved foods and ${weightCount} weights. Continue?`);
-        if (!confirmed) return;
-        await api.importData(data);
-        alert('Imported ✓');
-      } catch (error) {
-        alert(error && error.message ? error.message : 'Import failed');
-      }
-    });
-    input.click();
-  });
-  backupPanel.appendChild(importBtn);
-
-  const resetBtn = fullWidthButton('⚠ Reset All Data', 'btn-red');
-  resetBtn.addEventListener('click', async () => {
-    if (confirm('Delete all data?')) await api.resetAllData();
-  });
-  backupPanel.appendChild(resetBtn);
-  content.appendChild(backupPanel);
-
-  const infoPanel = document.createElement('section');
-  infoPanel.className = 'settings-card release-notes';
-  infoPanel.innerHTML = `<h3>ℹ️ Release Notes</h3><p><strong>ChrisFit Web preview · v2.2</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><p>Personal food, burn and weight tracking with fast reusable entry buttons. Food is stored as positive calories; burn is stored as negative calories. Dates are stored internally as yyyy-MM-dd and displayed as DD-MM-YYYY.</p><h4>This update</h4><ul><li>Cleaner card-based interface and labeled summaries.</li><li>Add Food, Add Burn and one-tap BMR flows with required custom entry names.</li><li>Add Burn includes an Estimated Total Burn to Midnight option using remaining BMR-paced burn.</li><li>Fixed seven-day weekly targets and readable history hierarchy.</li><li>Mobile swipe date navigation and theme selector.</li><li>Safe backup import confirmation and retained connection debugger.</li></ul>`;
-  content.appendChild(infoPanel);
-
-  container.appendChild(content);
-  return container;
+  const notes=panel('ℹ️ Release Notes'); notes.classList.add('release-notes'); notes.innerHTML += `<p><strong>ChrisFit Web · v2.3</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Added Daily Burn Target and weekly burn targets.</li><li>Added editable entries, weights and saved-food management.</li><li>Added configurable emoji labels saved in Google Sheets.</li><li>Added food search suggestions and improved desktop Settings layout.</li><li>Added root <code>icon.png</code> logo support before the title.</li></ul>`; content.appendChild(notes);
+  container.appendChild(content); return container;
 }

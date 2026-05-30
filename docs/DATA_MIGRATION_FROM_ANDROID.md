@@ -1,55 +1,18 @@
-# Migrating Data From Android
+# Importing the Android Phone Backup
 
-The Android version of ChrisFit supports exporting and importing backups in
-JSON format via the settings screen.  The web app uses the **exact
-same structure**, which allows you to migrate your data from Android to
-Google Sheets with minimal effort.
+ChrisFit Web v2.3 accepts the original Android JSON backup format containing `entries`, `foods`, and `weights` arrays.
 
-## Export from Android
+## Safe import flow
 
-1. Open ChrisFit on your Android device.
-2. Go to **Settings → Backup → Export Data**.
-3. Choose a destination and save the exported `backup.json` file.
+1. Keep the original phone `backup.json` file unchanged as a safety copy.
+2. Confirm one test entry saves to Google Sheets and can be deleted from the web app.
+3. Open **Settings → Backup & Data → Import Phone Backup**.
+4. Select the Android backup file and confirm the displayed counts before replacing current entries, foods and weights.
+5. Verify known dates and weights after import.
 
-## Import into the web app
+## What v2.3 does during import
 
-1. Set up your Google Sheets and Apps Script backend as described in
-   `docs/GOOGLE_SHEETS_SETUP.md`.
-2. Launch the web app and navigate to **Settings → Backup → Import Data**.
-3. Select the `backup.json` file exported from Android.  The web app
-   uploads the file to the backend, clears existing data and recreates
-   entries, foods and weights based on the JSON.
-4. Verify that your daily totals, foods and weight history appear
-   correctly.
-
-## Export from the web app
-
-Likewise you can export your data from the web app in the same format
-and import it into the Android app using its import feature.  This
-ensures bidirectional compatibility.
-
-## Structure of the backup file
-
-An exported backup is a JSON object with three arrays:
-
-```json
-{
-  "entries": [
-    { "date": "2026-05-30", "name": "Banana", "calories": 100 },
-    ...
-  ],
-  "foods": [
-    { "name": "Banana", "calories": 100 },
-    ...
-  ],
-  "weights": [
-    { "date": "2026-05-30", "value": 75.3 },
-    ...
-  ]
-}
-```
-
-Notice that `id` fields are deliberately omitted.  When importing the
-backend regenerates IDs sequentially to maintain ordering.  Dates must
-be strings in `yyyy-MM-dd` format.  Calories are integers (negative
-values indicate burns) and weights are floats.
+- Entries and weights are imported unchanged except that stable cloud IDs are generated.
+- Saved foods receive initial order values and are set visible by default.
+- Existing web-only Settings values, including Daily Burn Target and emojis, are kept.
+- Historic blank entry names in the phone backup remain as historical data and display as `Unnamed entry (imported)`; new blank names are blocked.

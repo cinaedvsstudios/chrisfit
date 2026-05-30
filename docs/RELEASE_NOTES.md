@@ -1,68 +1,41 @@
-# Release Notes
+# ChrisFit Web Release Notes
 
-## v1.0.0 (2026‑05‑30)
+## v2.3 — Web customisation and editing update — 30 May 2026
 
-Initial web release of **ChrisFit**, a faithful clone of the original
-Android app.  Key features include:
+- Added **Daily Burn Target** and corresponding weekly burn target totals (`daily burn target × 7`).
+- Added entry editing from the current day and History; edits update an existing record rather than adding a duplicate.
+- Added weight editing from the daily card and weight history.
+- Added saved-food editing, manual order controls and hide/show controls while preserving fast one-tap logging.
+- Added saved-food search suggestions in **Add Food**; selecting a suggestion fills the entry form before saving.
+- Added configurable emoji choices in Settings, synchronised through Google Sheets. Food defaults to **🥦**.
+- Added a direct **Open Google Sheet** link in Settings.
+- Improved desktop Settings width/padding so it no longer stretches too far across the page.
+- Added support for the repository-root `icon.png` logo beside the ChrisFit title and as the browser icon.
+- Enlarged the selected-day heading and applied emoji arrow controls.
+- Retained **Add Food**, **Add Burn**, **BMR**, and the BMR-paced **Estimate Total Burn to Midnight** feature.
+- Kept Connection Debug available during early live-data testing.
 
-* Daily tracking of food intake and burns with quick‑add buttons.
-* Custom entry dialog with burn toggle and support for negative calories.
-* BMR quick‑add button using the configured BMR value.
-* Weight tracking per date with BMI calculation.
-* Summary box showing daily and weekly totals and deficits.
-* History view grouped by week and day with expandable sections and
-  weight history.
-* Settings screen with editable daily calories, daily deficit and BMR.
-* Dynamic food button management: add or delete food items from the
-  quick‑add grid.
-* JSON backup export and import compatible with the Android format.
-* Google Sheets + Apps Script backend with demo mode fallback.
-* Responsive layout and dark mode CSS variables.
+### Backend/data upgrade
 
-### Architectural Changes
+The Google Apps Script backend expands the existing Sheet automatically without removing Android-compatible data:
 
-The v1.0.0 release splits the monolithic JavaScript bundle into
-modular files to improve maintainability.  Navigation, dialogs,
-history and settings rendering are now contained in their own
-modules (`navigation.js`, `dialogs.js`, `history.js`, `settings.js`)
-and the top‑level `app.js` coordinates state changes and initial
-data loading only.  The new `ui.js` module centralises all DOM
-creation for the main screen.  This refactoring makes it easier to
-extend individual screens without touching unrelated logic.
+- `foods` gains `sortOrder` and `active` for ordering and visibility.
+- `settings` gains `dailyBurnTarget`, emoji preferences and the Google Sheet link.
+- Existing `entries` and `weights` schemas remain unchanged; update operations use their stable cloud IDs.
+- Phone backup import remains compatible with the original Android JSON structure (`entries`, `foods`, `weights`).
 
-Refer to `docs/HANDOVER_REPORT.md` for known limitations and possible
-future enhancements.
-### Connection Diagnostic Patch — 30 May 2026
+## v2.2 — Preview repair and burn estimate update — 30 May 2026
 
-- Added a non-destructive **Connection Debug** panel inside Settings.
-- Added read tests for settings and entries plus an empty-batch POST test of the sync route; the batch contains no record changes and creates no rows.
-- Added **Copy Debug Report** so connection failures can be pasted into support/chat without relying on hidden browser console logs.
-- Added **Discard Unsynced Local Changes** so failed test entries held in browser storage can be removed without altering Google Sheets data.
+- Fixed startup rendering failure before settings loaded.
+- Restored one-tap **BMR** alongside **Add Food** and **Add Burn**.
+- Added **Estimate Total Burn to Midnight** using remaining BMR-paced burn.
+- Preserved the working Google Sheets connection and diagnostic panel.
 
+## v2.1 — UI preview update — 30 May 2026
 
-## v2.1 Preview UI Update — 30 May 2026
+- Introduced responsive card sections, visible `DD-MM-YYYY` dates, labelled summaries, mobile swipe navigation, theme selection and Month → Week → Day History.
+- Added blank-name validation for new entries and Android backup import confirmation.
 
-- Replaced the raw Android-like web layout with card-based responsive sections.
-- Changed main entry actions to **Add Food** and **Add Burn**.
-- New entries can no longer be saved without a name; historical blank Android-import entries remain visible as imported unnamed items.
-- Visible and typed dates use `DD-MM-YYYY`; internal data storage remains `yyyy-MM-dd`.
-- Daily and weekly summary values are labeled as Food, Burn and Deficit.
-- Weekly food and deficit targets are calculated as fixed daily target × 7.
-- Rebuilt History into a Month → Week → Day hierarchy with readable totals and weight-change estimate text.
-- Added mobile swipe navigation between days.
-- Added System / Light / Dark appearance setting stored locally in the browser.
-- Added an import confirmation showing entry/food/weight counts before replacing sheet data.
-- Moved sync/toast messages above the bottom controls so they no longer cover Settings.
-- Kept Connection Debug available while live Google Sheets migration is being verified.
+## Original Android app
 
-Deferred deliberately: Daily Burn Target (requires a data schema/backend update), editing entries, automatic BMR, default Daily Burn and bulk add.
-
-
-## v2.2 Preview Repair & Burn Estimate Update — 30 May 2026
-
-- Fixed the black-screen startup failure caused by rendering summaries before settings were loaded.
-- Restored the one-tap **BMR** action alongside **Add Food** and **Add Burn**.
-- Added **Estimate Total Burn to Midnight** inside Add Burn. It estimates final daily burn by adding only remaining BMR-paced burn to the current health-app total.
-- Saving an estimated total burn replaces existing `BMR` and earlier `Estimated Total Burn` entries for that date to avoid double-counting; other manual burn entries are not silently deleted.
-- Preserved the live Google Sheets/Apps Script connection contract and the Connection Debug panel.
-- Complete-project ZIP delivery replaces partial patch delivery for future releases.
+- Kotlin / Jetpack Compose / Room application with food and burn entries, saved quick-add items, weights, summaries, settings, JSON backup/restore and the ChrisFit logo.
