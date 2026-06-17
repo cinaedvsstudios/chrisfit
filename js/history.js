@@ -5,6 +5,7 @@ import * as calc from './calculations.js';
 import { navigate } from './navigation.js';
 import { showEntryDialog, showWeightDialog } from './dialogs.js';
 
+const CUSTOM_PERIOD_KEY = 'chrisfit.history.customPeriod.v1';
 const openMonths = new Set();
 const openWeeks = new Set();
 const openDays = new Set();
@@ -41,12 +42,65 @@ function group(entries) {
   return output;
 }
 
-function totalSummary(stats) {
+function getMonthStart(monthKey) {
+  return `${monthKey}-01`;
+}
+
+function getMonthEnd(monthKey) {
+  const date = dateUtils.parseIso(`${monthKey}-01`);
+  date.setMonth(date.getMonth() + 1);
+  date.setDate(0);
+  return dateUtils.toIso(date);
+}
+
+function countDaysInclusive(startIso, endIso) {
+  const start = dateUtils.parseIso(startIso);
+  const end = dateUtils.parseIso(endIso);
+  if (!start || !end) return 1;
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+}
+
+function entriesBetween(entries, startIso, endIso) {
+  return entries.filter(entry => entry.date >= startIso && entry.date <= endIso);
+}
+
+function buildPeriodStats(entries, targetDays) {
+  const totals = calc.calculateDay(entries, i());
+  const days = Math.max(1, Number(targetDays) || 1);
+  return {
+    ...totals,
+    weeklyFoodTarget: Number(i().dailyCalories ?? 1500) * days,
+    weeklyBurnTarget: Number(i().dailyBurnTarget ?? 2500) * days,
+    weeklyDeficitTarget: Number(i().dailyDeficit ?? 500) * days,
+    targetDays: days
+  };
+}
+
+function targetRangeLabel(startIso, endIso) {
+  return `${dateUtils.formatDisplay(startIso)} – ${dateUtils.formatDisplay(endIso)}`;
+}
+
+function readCustomPeriod(selectedWeek) {
+  const fallback = { start: selectedWeek, end: dateUtils.getWeekEnd(selectedWeek) };
+  try {
+    const stored = JSON.parse(localStorage.getItem(CUSTOM_PERIOD_KEY) || '{}');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(stored.start) && /^\d{4}-\d{2}-\d{2}$/.test(stored.end)) {
+      return stored.start <= stored.end ? stored : fallback;
+    }
+  } catch (_) {}
+  return fallback;
+}
+
+function saveCustomPeriod(startIso, endIso) {
+  localStorage.setItem(CUSTOM_PERIOD_KEY, JSON.stringify({ start: startIso, end: endIso }));
+}
+
+function totalSummary(stats, title = 'Week Total') {
   const box = document.createElement('div');
   box.className = 'history-summary history-total-summary';
   const heading = document.createElement('h3');
   heading.className = 'history-summary-title';
-  heading.textContent = 'Week Total';
+  heading.textContent = title;
   box.appendChild(heading);
 
   [
@@ -66,7 +120,7 @@ function totalSummary(stats) {
   return box;
 }
 
-function dailyAverageSummary(stats, entries) {
+function dailyAverageSummary(stats, entries, titlePrefix = 'Daily Average') {
   const box = document.createElement('div');
   box.className = 'history-summary history-average-summary';
   const recordedDays = Math.max(1, new Set(entries.map(entry => entry.date)).size);
@@ -83,7 +137,7 @@ function dailyAverageSummary(stats, entries) {
 
   const heading = document.createElement('h3');
   heading.className = 'history-summary-title';
-  heading.textContent = `Daily Average · ${recordedDays} logged ${recordedDays === 1 ? 'day' : 'days'}`;
+  heading.textContent = `${titlePrefix} · ${recordedDays} logged ${recordedDays === 1 ? 'day' : 'days'}`;
   box.appendChild(heading);
 
   [
@@ -101,11 +155,74 @@ function dailyAverageSummary(stats, entries) {
   return box;
 }
 
+function periodSummary(label, entries, targetDays, startIso, endIso) {
+  const block = document.createElement('div');
+  block.className = `period-summary-block ${label.toLowerCase().replace(/\s+/g, '-')}-summary-block`;
+  const heading = document.createElement('div');
+  heading.className = 'period-summary-heading';
+  heading.innerHTML = `<h3>${label}</h3><span>${targetRangeLabel(startIso, endIso)}</span>`;
+  block.appendChild(heading);
+
+  const grid = document.createElement('div');
+  grid.className = 'week-summary-grid period-summary-grid';
+  const stats = buildPeriodStats(entries, targetDays);
+  grid.append(
+    totalSummary(stats, `${label} Total`),
+    dailyAverageSummary(stats, entries, 'Daily Average')
+  );
+  block.appendChild(grid);
+  return block;
+}
+
 function weekSummary(stats, entries) {
   const grid = document.createElement('div');
   grid.className = 'week-summary-grid';
-  grid.append(totalSummary(stats), dailyAverageSummary(stats, entries));
+  grid.append(totalSummary(stats, 'Week Total'), dailyAverageSummary(stats, entries, 'Daily Average'));
   return grid;
+}
+
+function customPeriodBlock(selectedWeek) {
+  const period = readCustomPeriod(selectedWeek);
+  const startInput = document.createElement('input');
+  startInput.type = 'text';
+  startInput.value = dateUtils.formatDisplay(period.start);
+  startInput.placeholder = 'DD-MM-YYYY';
+  startInput.setAttribute('aria-label', 'Custom period start date');
+  const endInput = document.createElement('input');
+  endInput.type = 'text';
+  endInput.value = dateUtils.formatDisplay(period.end);
+  endInput.placeholder = 'DD-MM-YYYY';
+  endInput.setAttribute('aria-label', 'Custom period end date');
+
+  const entries = entriesBetween(state.entriesFull, period.start, period.end);
+  const block = periodSummary('Custom Period', entries, countDaysInclusive(period.start, period.end), period.start, period.end);
+  block.classList.add('custom-period-block');
+
+  const controls = document.createElement('div');
+  controls.className = 'custom-period-controls';
+  const startLabel = document.createElement('label');
+  startLabel.innerHTML = '<span>From</span>';
+  const endLabel = document.createElement('label');
+  endLabel.innerHTML = '<span>To</span>';
+  const apply = button('Apply', 'btn-green small-button', () => {
+    const start = dateUtils.parseDisplayDate(startInput.value);
+    const end = dateUtils.parseDisplayDate(endInput.value);
+    if (!start || !end) {
+      alert('Use DD-MM-YYYY for both custom period dates.');
+      return;
+    }
+    const startIso = dateUtils.toIso(start);
+    const endIso = dateUtils.toIso(end);
+    if (startIso > endIso) {
+      alert('The custom start date must be before the end date.');
+      return;
+    }
+    saveCustomPeriod(startIso, endIso);
+    navigate('history');
+  });
+  controls.append(startLabel, startInput, endLabel, endInput, apply);
+  block.insertBefore(controls, block.children[1]);
+  return block;
 }
 
 export function renderHistory(autoExpandSelectedWeek = false) {
@@ -158,6 +275,21 @@ export function renderHistory(autoExpandSelectedWeek = false) {
 
         if (openWeeks.has(week)) {
           wrap.appendChild(weekSummary(stats, entries));
+
+          if (week === selectedWeek) {
+            const monthStart = getMonthStart(selectedMonth);
+            const monthEnd = getMonthEnd(selectedMonth);
+            const monthEntries = entriesBetween(state.entriesFull, monthStart, monthEnd);
+            wrap.appendChild(periodSummary(
+              'Month',
+              monthEntries,
+              countDaysInclusive(monthStart, monthEnd),
+              monthStart,
+              monthEnd
+            ));
+            wrap.appendChild(customPeriodBlock(selectedWeek));
+          }
+
           const days = {};
           entries.forEach(entry => { (days[entry.date] ||= []).push(entry); });
 

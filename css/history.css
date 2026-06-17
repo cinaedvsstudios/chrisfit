@@ -97,3 +97,46 @@
 }
 .weight-month-rows { padding: 0 .85rem .35rem; }
 .weight-month-rows .weight-row:first-child { border-top: 0; }
+
+
+.period-summary-block {
+  margin: 0 1rem .72rem;
+  padding-top: .2rem;
+}
+.period-summary-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .75rem;
+  margin: .2rem 0 .45rem;
+  color: var(--color-text-primary);
+}
+.period-summary-heading h3 {
+  margin: 0;
+  font-size: .95rem;
+}
+.period-summary-heading span {
+  color: var(--color-text-secondary);
+  font-size: .82rem;
+}
+.period-summary-grid {
+  margin: 0;
+}
+.custom-period-block {
+  border-top: 1px dashed var(--color-divider);
+  padding-top: .7rem;
+}
+.custom-period-controls {
+  display: grid;
+  grid-template-columns: auto minmax(125px, 1fr) auto minmax(125px, 1fr) auto;
+  align-items: center;
+  gap: .45rem;
+  margin: .45rem 0 .65rem;
+}
+.custom-period-controls label {
+  color: var(--color-text-secondary);
+  font-size: .84rem;
+}
+.custom-period-controls input {
+  min-width: 0;
+}

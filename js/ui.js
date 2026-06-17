@@ -50,7 +50,7 @@ export function renderMain() {
   if (api.isDemoMode()) { const demo = document.createElement('div'); demo.className = 'demo-banner'; demo.textContent = 'DEMO MODE — changes are not saved to Google Sheets'; container.appendChild(demo); }
   const hero = document.createElement('section'); hero.className = 'card hero-card';
   const brand = document.createElement('div'); brand.className = 'brand-row';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.6</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.7</div></div>');
   brand.append(title, button(`${e().emojiSettings} Settings`, 'btn-outline compact-button', () => navigate('settings')));
   const nav = document.createElement('div'); nav.className = 'date-navigation';
   nav.append(button(e().emojiPrevious, 'date-button', () => changeDay(-1), 'Previous day'));

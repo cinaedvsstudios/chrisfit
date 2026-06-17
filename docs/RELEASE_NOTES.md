@@ -1,3 +1,13 @@
+## v2.7 — Month and Custom Period History summaries — 18 June 2026
+
+- Added a Month summary underneath the selected week in History.
+- Added a Custom Period summary underneath the selected week in History.
+- Custom Period uses `DD-MM-YYYY` date inputs and remembers the last selected date range in the browser until changed.
+- Month and Custom Period summaries use the same two-box structure as the Week summary: Total on the left and Daily Average / Vs Target on the right.
+- Month targets are calculated using the number of days in the selected month.
+- Custom Period targets are calculated using the inclusive number of days in the chosen range.
+- No Apps Script or Google Sheet schema changes are required.
+
 ## v2.6 — Carry-forward weight display and monthly weight history — 30 May 2026
 
 - The main Weight card now shows the most recent recorded weight on or before the selected date when that date has no new weigh-in.

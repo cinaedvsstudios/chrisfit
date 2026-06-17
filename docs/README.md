@@ -1,4 +1,4 @@
-# ChrisFit Web v2.6
+# ChrisFit Web v2.7
 
 ChrisFit Web is the shared-data browser interface for ChrisFit. It keeps the Android app's fast repeated saved-item workflow while presenting a cleaner responsive card layout and storing data in Google Sheets through Google Apps Script.
 

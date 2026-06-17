@@ -329,7 +329,7 @@ export function renderSettings() {
 
   const notes = panel('ℹ️ Release Notes');
   notes.classList.add('release-notes');
-  notes.innerHTML += `<p><strong>ChrisFit Web · v2.6</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Weight card now carries forward the most recent weigh-in on or before the selected date, without showing future weights on older dates.</li><li>Weight History is grouped into expandable months.</li><li>Added a separate Food Library tab for Add Food search results without cluttering Quick Add buttons.</li><li>Added individual emoji support for Quick Add foods and Food Library records.</li><li>History and daily entries automatically display matching food emoji while storing clean entry names.</li><li>Phone history import can preserve the newly configured web Quick Add buttons and never removes the Food Library.</li><li>Retains v2.4 History weekly-average comparison and selected-week auto-expand.</li></ul>`;
+  notes.innerHTML += `<p><strong>ChrisFit Web · v2.7</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Added Month and Custom Period summary cards underneath the selected week in History.</li><li>Custom Period remembers the last selected date range in this browser until changed.</li><li>No Apps Script or Google Sheet schema update is required for this release.</li><li>Retains v2.6 weight carry-forward, monthly weight history, Food Library and food-specific emoji support.</li></ul>`;
   content.appendChild(notes);
 
   container.appendChild(content);
