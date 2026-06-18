@@ -2,36 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ChrisFit</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#101116" />
+    <title>Actarium</title>
     <link rel="icon" type="image/png" href="icon.png" />
-    <!--
-      ChrisFit Web Clone
-
-      This HTML file serves as the entry point for the ChrisFit web application.  It
-      references a handful of CSS files that mirror the Android app’s colour
-      palette and layout and pulls in a small JavaScript bundle built from
-      vanilla ES modules.  See docs/README.md for a description of each
-      stylesheet and script.
-
-      The page intentionally avoids any framework-specific structure to make
-      maintenance straightforward.  All dynamic behaviour lives in the
-      JavaScript modules under js/.
-    -->
-    <link rel="stylesheet" href="css/variables.css" />
-    <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/layout.css" />
-    <link rel="stylesheet" href="css/components.css" />
-    <link rel="stylesheet" href="css/history.css" />
-    <link rel="stylesheet" href="css/dialogs.css" />
-    <link rel="stylesheet" href="css/dark-mode.css" />
-    <link rel="stylesheet" href="css/responsive.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <!-- Main application container.  The contents of this element are
-         manipulated by js/app.js at runtime to show the current screen. -->
-    <div id="app"></div>
-
+    <div id="app" class="app-root">
+      <main class="loading-screen">
+        <section class="card hero-card">
+          <p class="eyebrow">Actarium</p>
+          <h1>Loading…</h1>
+        </section>
+      </main>
+    </div>
     <script type="module" src="js/app.js"></script>
   </body>
 </html>
