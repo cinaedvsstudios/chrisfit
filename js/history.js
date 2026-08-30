@@ -1,4 +1,4 @@
-import { state } from './state.js';
+import { state, showToast } from './state.js';
 import * as api from './api.js';
 import * as dateUtils from './date-utils.js';
 import * as calc from './calculations.js';
@@ -225,22 +225,247 @@ function customPeriodBlock(selectedWeek) {
   return block;
 }
 
+function eachDay(startIso, endIso) {
+  const days = [];
+  const current = dateUtils.parseIso(startIso);
+  const end = dateUtils.parseIso(endIso);
+  if (!current || !end) return days;
+  while (current <= end) {
+    days.push(dateUtils.toIso(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return days;
+}
+
+function missingDefaultsForDay(iso) {
+  const date = dateUtils.parseIso(iso);
+  const day = date ? date.getDay() : 1;
+  const weekendValue = day === 0 || day === 5 || day === 6;
+  const value = weekendValue ? 2500 : 2000;
+  return { food: value, burn: value };
+}
+
+function totalsForDay(iso) {
+  return calc.calculateDay(state.entriesFull.filter(entry => entry.date === iso), i());
+}
+
+function readPositiveInput(input, label, dayIso) {
+  const value = Number(input.value);
+  if (!Number.isFinite(value) || value <= 0) {
+    alert(`${label} for ${dateUtils.formatDisplay(dayIso)} must be greater than 0.`);
+    input.focus();
+    return null;
+  }
+  return Math.round(value);
+}
+
+function addMissingEstimateEntries(row, foodInput, burnInput) {
+  let added = 0;
+  if (row.missingFood) {
+    const food = readPositiveInput(foodInput, 'Food', row.iso);
+    if (food === null) return null;
+    api.addEntry(row.iso, 'Missing Food Estimate', Math.abs(food));
+    added += 1;
+  }
+  if (row.missingBurn) {
+    const burn = readPositiveInput(burnInput, 'Burn', row.iso);
+    if (burn === null) return null;
+    api.addEntry(row.iso, 'Missing Burn Estimate', -Math.abs(burn));
+    added += 1;
+  }
+  return added;
+}
+
+function buildMissingRows(startIso, endIso) {
+  return eachDay(startIso, endIso)
+    .map(iso => {
+      const totals = totalsForDay(iso);
+      const defaults = missingDefaultsForDay(iso);
+      const missingFood = totals.intake <= 0;
+      const missingBurn = totals.burn <= 0;
+      return { iso, totals, defaults, missingFood, missingBurn };
+    })
+    .filter(row => row.missingFood || row.missingBurn);
+}
+
+function openMissingScanWindow(defaultMonth) {
+  document.querySelector('.missing-scan-overlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'missing-scan-overlay';
+  const modal = document.createElement('section');
+  modal.className = 'missing-scan-modal';
+  overlay.appendChild(modal);
+
+  const header = document.createElement('div');
+  header.className = 'missing-scan-header';
+  const title = document.createElement('div');
+  title.innerHTML = '<h2>Scan Missing</h2><p>Find days with missing food or burn entries and add estimates without overwriting real entries.</p>';
+  const close = button('×', 'missing-scan-close', () => overlay.remove(), 'Close');
+  header.append(title, close);
+
+  const controls = document.createElement('div');
+  controls.className = 'missing-scan-controls';
+
+  const monthInput = document.createElement('input');
+  monthInput.type = 'month';
+  monthInput.value = defaultMonth;
+
+  const fromInput = document.createElement('input');
+  fromInput.type = 'text';
+  fromInput.placeholder = 'DD-MM-YYYY';
+
+  const toInput = document.createElement('input');
+  toInput.type = 'text';
+  toInput.placeholder = 'DD-MM-YYYY';
+
+  function setMonthRange(monthKey) {
+    fromInput.value = dateUtils.formatDisplay(getMonthStart(monthKey));
+    toInput.value = dateUtils.formatDisplay(getMonthEnd(monthKey));
+  }
+  setMonthRange(defaultMonth);
+
+  const scanButton = button('Scan', 'btn-blue small-button', () => renderResults());
+  const saveAllButton = button('Save All Missing', 'btn-green small-button', () => {});
+  const monthLabel = document.createElement('label');
+  monthLabel.innerHTML = '<span>Month</span>';
+  const fromLabel = document.createElement('label');
+  fromLabel.innerHTML = '<span>From</span>';
+  const toLabel = document.createElement('label');
+  toLabel.innerHTML = '<span>To</span>';
+  controls.append(monthLabel, monthInput, fromLabel, fromInput, toLabel, toInput, scanButton, saveAllButton);
+
+  const results = document.createElement('div');
+  results.className = 'missing-scan-results';
+
+  monthInput.addEventListener('change', () => {
+    if (monthInput.value) {
+      setMonthRange(monthInput.value);
+      renderResults();
+    }
+  });
+
+  function readRange() {
+    const start = dateUtils.parseDisplayDate(fromInput.value);
+    const end = dateUtils.parseDisplayDate(toInput.value);
+    if (!start || !end) {
+      alert('Use DD-MM-YYYY for both scan dates.');
+      return null;
+    }
+    const startIso = dateUtils.toIso(start);
+    const endIso = dateUtils.toIso(end);
+    if (startIso > endIso) {
+      alert('The scan start date must be before the end date.');
+      return null;
+    }
+    return { startIso, endIso };
+  }
+
+  function renderResults() {
+    const range = readRange();
+    if (!range) return;
+    const missingRows = buildMissingRows(range.startIso, range.endIso);
+    const rowSavers = [];
+    results.innerHTML = '';
+
+    const summary = document.createElement('p');
+    summary.className = 'missing-scan-summary';
+    summary.textContent = missingRows.length
+      ? `${missingRows.length} day${missingRows.length === 1 ? '' : 's'} need food, burn, or both. Locked values already exist and will not be overwritten.`
+      : 'No missing food or burn days found in this period.';
+    results.appendChild(summary);
+
+    if (!missingRows.length) {
+      saveAllButton.disabled = true;
+      return;
+    }
+    saveAllButton.disabled = false;
+
+    const table = document.createElement('div');
+    table.className = 'missing-scan-table';
+    const heading = document.createElement('div');
+    heading.className = 'missing-scan-row missing-scan-row-heading';
+    heading.innerHTML = '<strong>Date</strong><strong>Food</strong><strong>Burn</strong><strong>Action</strong>';
+    table.appendChild(heading);
+
+    missingRows.forEach(row => {
+      const line = document.createElement('div');
+      line.className = 'missing-scan-row';
+
+      const dateCell = document.createElement('div');
+      dateCell.className = 'missing-scan-date';
+      dateCell.innerHTML = `<strong>${dateUtils.formatHistoryLabel(row.iso)}</strong>`;
+
+      const foodInput = document.createElement('input');
+      foodInput.type = 'number';
+      foodInput.min = '1';
+      foodInput.value = row.missingFood ? row.defaults.food : row.totals.intake;
+      if (!row.missingFood) {
+        foodInput.disabled = true;
+        foodInput.className = 'locked-field';
+      }
+
+      const burnInput = document.createElement('input');
+      burnInput.type = 'number';
+      burnInput.min = '1';
+      burnInput.value = row.missingBurn ? row.defaults.burn : row.totals.burn;
+      if (!row.missingBurn) {
+        burnInput.disabled = true;
+        burnInput.className = 'locked-field';
+      }
+
+      const save = button('Save Row', 'btn-green small-button', () => {
+        const added = addMissingEstimateEntries(row, foodInput, burnInput);
+        if (added === null) return;
+        showToast(`Saved ${added} estimate${added === 1 ? '' : 's'} for ${dateUtils.formatDisplay(row.iso)}`, 'success');
+        save.disabled = true;
+        save.textContent = 'Saved';
+        setTimeout(renderResults, 0);
+      });
+
+      rowSavers.push(() => addMissingEstimateEntries(row, foodInput, burnInput));
+      line.append(dateCell, foodInput, burnInput, save);
+      table.appendChild(line);
+    });
+
+    saveAllButton.onclick = () => {
+      let added = 0;
+      for (const saver of rowSavers) {
+        const result = saver();
+        if (result === null) return;
+        added += result;
+      }
+      showToast(`Saved ${added} missing estimate${added === 1 ? '' : 's'}`, 'success', 3500);
+      setTimeout(renderResults, 0);
+    };
+
+    results.appendChild(table);
+  }
+
+  modal.append(header, controls, results);
+  document.body.appendChild(overlay);
+  renderResults();
+}
+
 export function renderHistory(autoExpandSelectedWeek = false) {
   const container = document.createElement('main');
   container.className = 'screen history active page';
-
-  const header = document.createElement('section');
-  header.className = 'card section-header';
-  header.append(button(`${i().emojiPrevious} Back`, 'btn-outline', () => navigate('main')));
-  const title = document.createElement('div');
-  title.innerHTML = `<h1>${i().emojiHistory} History</h1><p class="subtle-label">Food, burn and weight over time</p>`;
-  header.appendChild(title);
-  container.appendChild(header);
 
   const grouped = group(state.entriesFull);
   const selected = dateUtils.toIso(state.selectedDate);
   const selectedMonth = dateUtils.getMonthKey(selected);
   const selectedWeek = dateUtils.getWeekStart(selected);
+
+  const header = document.createElement('section');
+  header.className = 'card section-header history-titlebar';
+  header.append(button(`${i().emojiPrevious} Back`, 'btn-outline', () => navigate('main')));
+  const title = document.createElement('div');
+  title.innerHTML = `<h1>${i().emojiHistory} History</h1><p class="subtle-label">Food, burn and weight over time</p>`;
+  const actions = document.createElement('div');
+  actions.className = 'history-header-actions';
+  actions.append(button('Scan Missing', 'btn-blue compact-button', () => openMissingScanWindow(selectedMonth)));
+  header.append(title, actions);
+  container.appendChild(header);
 
   // Open the week matching the date the user was viewing when History is entered.
   // Once open, the user can still collapse it without the render immediately reopening it.
