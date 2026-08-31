@@ -95,3 +95,77 @@
   .guidance-line { grid-template-columns: 1fr; gap: .2rem; }
   .guidance-trend-line { flex-direction: column; gap: .25rem; }
 }
+
+.compact-hero-card {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(190px, auto) minmax(210px, 1fr);
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+.compact-hero-left,
+.compact-hero-right {
+  display: flex;
+  flex-direction: column;
+  gap: .72rem;
+}
+.compact-hero-right { align-items: flex-end; }
+.compact-hero-left .brand-title {
+  justify-content: flex-start;
+  margin: 0;
+}
+.compact-hero-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+.compact-nav-button {
+  width: 44px;
+  height: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.date-picker-wrap {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  max-width: 100%;
+}
+.compact-selected-date {
+  min-width: 170px;
+  padding: .45rem .85rem;
+}
+.date-picker-wrap .native-date-picker {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  z-index: 1;
+  opacity: .01;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  pointer-events: none;
+}
+.date-picker-wrap .selected-date {
+  position: relative;
+  z-index: 2;
+}
+@media (max-width: 720px) {
+  .compact-hero-card {
+    grid-template-columns: 1fr auto 1fr;
+    gap: .55rem;
+    padding: .85rem;
+  }
+  .compact-hero-left,
+  .compact-hero-right { gap: .55rem; }
+  .compact-hero-left .brand-title h1 { font-size: 1.2rem; }
+  .compact-hero-left .brand-logo { width: 36px; height: 36px; }
+  .compact-selected-date { min-width: 135px; padding: .4rem .55rem; }
+  .compact-selected-date strong { font-size: 1.25rem; }
+  .compact-button { padding: .5rem .62rem; }
+}
