@@ -1,4 +1,5 @@
-import { state } from './state.js';
+import { state, notify } from './state.js';
+import { CONFIG } from './config.js';
 import * as calc from './calculations.js';
 import * as dateUtils from './date-utils.js';
 
@@ -37,7 +38,36 @@ const FALLBACK_GUIDANCE = [
   { scope: 'week', condition: 'weekend_warning', priority: 25, message: 'The week is okay so far, but the weekend can still flip it. Plan food before alcohol or takeaway happens.' }
 ];
 
+let guidanceRequested = false;
+
 function settings() { return state.settings || {}; }
+function normaliseRemoteGuidance(item, index = 0) {
+  return {
+    id: item.id ?? index + 1,
+    active: item.active === false || String(item.active).toLowerCase() === 'false' ? false : true,
+    scope: String(item.scope || '').trim().toLowerCase(),
+    metric: String(item.metric || '').trim().toLowerCase(),
+    condition: String(item.condition || '').trim().toLowerCase(),
+    priority: Number.isFinite(Number(item.priority)) ? Number(item.priority) : 999,
+    message: String(item.message || '').trim()
+  };
+}
+function requestRemoteGuidance() {
+  if (guidanceRequested || !CONFIG.baseUrl) return;
+  guidanceRequested = true;
+  const url = new URL(CONFIG.baseUrl);
+  url.searchParams.set('action', 'guidance');
+  if (CONFIG.token) url.searchParams.set('token', CONFIG.token);
+  fetch(url.toString())
+    .then(response => response.ok ? response.json() : [])
+    .then(data => {
+      if (data && data.success === false) return;
+      if (!Array.isArray(data)) return;
+      state.guidance = data.map(normaliseRemoteGuidance).filter(item => item.active && item.scope && item.condition && item.message);
+      notify();
+    })
+    .catch(error => console.warn('Guidance sheet could not be loaded; using built-in fallback guidance.', error));
+}
 function guidanceRows() { return state.guidance?.length ? state.guidance : FALLBACK_GUIDANCE; }
 function addDays(date, days) {
   const copy = new Date(date);
@@ -125,6 +155,7 @@ function line(label, text) {
 }
 
 export function renderGuidanceCard(selectedDate = state.selectedDate) {
+  requestRemoteGuidance();
   const selectedIso = dateUtils.toIso(selectedDate);
   const yesterdayIso = dateUtils.toIso(addDays(selectedDate, -1));
   const todayMessage = pickMessage('today', dayConditions(entriesForDate(selectedIso), 'today'));
