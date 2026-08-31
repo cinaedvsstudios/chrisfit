@@ -77,7 +77,7 @@ function addDays(date, days) {
 function entriesForDate(iso) { return state.entriesFull.filter(entry => entry.date === iso); }
 function hasFood(entries) { return entries.some(entry => Number(entry.calories) > 0); }
 function hasBurn(entries) { return entries.some(entry => Number(entry.calories) < 0); }
-function dayConditions(entries, scope) {
+function dayConditions(entries) {
   const conditions = [];
   const food = hasFood(entries);
   const burn = hasBurn(entries);
@@ -105,10 +105,14 @@ function dayConditions(entries, scope) {
 
   return conditions;
 }
+function weekEntriesFor(selectedIso) {
+  const weekStart = dateUtils.getWeekStart(selectedIso);
+  return state.entriesFull.filter(entry => dateUtils.getWeekStart(entry.date) === weekStart);
+}
 function weekConditions(selectedIso) {
   const conditions = [];
   const weekStart = dateUtils.getWeekStart(selectedIso);
-  const entries = state.entriesFull.filter(entry => dateUtils.getWeekStart(entry.date) === weekStart);
+  const entries = weekEntriesFor(selectedIso);
   const selected = dateUtils.parseIso(selectedIso);
   let cursor = dateUtils.parseIso(weekStart);
   while (cursor <= selected) {
@@ -153,21 +157,42 @@ function line(label, text) {
   row.innerHTML = `<strong>${label}</strong><span>${text}</span>`;
   return row;
 }
+function approxWeightText(label, netCalories) {
+  const net = Number(netCalories) || 0;
+  const kg = Math.abs(net) / 7700;
+  const result = net > 0 ? 'gain' : 'loss';
+  const cssClass = net > 0 ? 'trend-gain' : 'trend-loss';
+  return `<span class="${cssClass}"><strong>${label}</strong> · ${kg.toFixed(2)} kg approx ${result}</span>`;
+}
+function weightTrendLine(dayTotals, weekTotals) {
+  const row = document.createElement('div');
+  row.className = 'guidance-trend-line';
+  row.innerHTML = `${approxWeightText('Day', dayTotals.net)}${approxWeightText('Week', weekTotals.net)}`;
+  return row;
+}
 
 export function renderGuidanceCard(selectedDate = state.selectedDate) {
   requestRemoteGuidance();
   const selectedIso = dateUtils.toIso(selectedDate);
   const yesterdayIso = dateUtils.toIso(addDays(selectedDate, -1));
-  const todayMessage = pickMessage('today', dayConditions(entriesForDate(selectedIso), 'today'));
-  const yesterdayMessage = pickMessage('yesterday', dayConditions(entriesForDate(yesterdayIso), 'yesterday'));
+  const selectedEntries = entriesForDate(selectedIso);
+  const todayMessage = pickMessage('today', dayConditions(selectedEntries));
+  const yesterdayMessage = pickMessage('yesterday', dayConditions(entriesForDate(yesterdayIso)));
   const weekMessage = pickMessage('week', weekConditions(selectedIso));
+  const dayTotals = calc.calculateDay(selectedEntries, settings());
+  const weekTotals = calc.calculateWeek(weekEntriesFor(selectedIso), settings());
 
   const card = document.createElement('section');
   card.className = 'card guidance-card';
-  card.innerHTML = '<div class="card-heading"><div><h2>Guidance</h2><p>Plain read of today, yesterday and this week.</p></div></div>';
+  card.innerHTML = '<div class="card-heading"><div><h2>Guidance</h2></div></div>';
   const body = document.createElement('div');
   body.className = 'guidance-lines';
-  body.append(line('Today', todayMessage), line('Yesterday', yesterdayMessage), line('This week', weekMessage));
+  body.append(
+    line('Today', todayMessage),
+    line('Yesterday', yesterdayMessage),
+    line('This week', weekMessage),
+    weightTrendLine(dayTotals, weekTotals)
+  );
   card.appendChild(body);
   return card;
 }
