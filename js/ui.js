@@ -6,6 +6,7 @@ import { navigate, getActiveScreen } from './navigation.js';
 import { showEntryDialog, showWeightDialog } from './dialogs.js';
 import { renderHistory } from './history.js';
 import { renderSettings } from './settings.js';
+import { renderGuidanceCard } from './guidance.js';
 
 function e() { return state.settings; }
 function button(text, className, handler, title = '') {
@@ -50,7 +51,7 @@ export function renderMain() {
   if (api.isDemoMode()) { const demo = document.createElement('div'); demo.className = 'demo-banner'; demo.textContent = 'DEMO MODE — changes are not saved to Google Sheets'; container.appendChild(demo); }
   const hero = document.createElement('section'); hero.className = 'card hero-card';
   const brand = document.createElement('div'); brand.className = 'brand-row';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.7</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.8</div></div>');
   brand.append(title, button(`${e().emojiSettings} Settings`, 'btn-outline compact-button', () => navigate('settings')));
   const nav = document.createElement('div'); nav.className = 'date-navigation';
   nav.append(button(e().emojiPrevious, 'date-button', () => changeDay(-1), 'Previous day'));
@@ -82,6 +83,7 @@ export function renderMain() {
   if (selectedWeight) weightActions.append(button(`${e().emojiEdit} Edit`, 'btn-outline', () => showWeightDialog(selectedWeight), `Edit weight recorded ${dateUtils.formatDisplay(selectedWeight.date)}`));
   weight.appendChild(weightActions);
   const overview = document.createElement('section'); overview.className = 'overview-grid'; overview.append(daily, weekly, weight); container.appendChild(overview);
+  container.appendChild(renderGuidanceCard(state.selectedDate));
 
   const quick = document.createElement('section'); quick.className = 'card';
   quick.innerHTML = `<div class="card-heading"><div><h2>Quick Add</h2><p>Tap saved items repeatedly to log multiple units.</p></div></div>`;
