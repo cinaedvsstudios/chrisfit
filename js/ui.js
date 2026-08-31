@@ -13,28 +13,21 @@ function button(text, className, handler, title = '') {
   const el = document.createElement('button'); el.type = 'button'; el.className = className; el.textContent = text; el.title = title; el.addEventListener('click', handler); return el;
 }
 function changeDay(offset) { const date = new Date(state.selectedDate); date.setDate(date.getDate() + offset); state.selectedDate = date; api.fetchEntriesByDate(date); }
-function chooseDate() {
-  const input = document.createElement('input');
-  input.type = 'date';
-  input.className = 'native-date-picker';
+function chooseDate(input) {
+  if (!input) return;
   input.value = dateUtils.toIso(state.selectedDate);
-  input.setAttribute('aria-label', 'Select date');
-  input.addEventListener('change', () => {
-    if (!input.value) { input.remove(); return; }
-    const date = dateUtils.parseIso(input.value);
-    if (!date) { input.remove(); return; }
-    state.selectedDate = date;
-    api.fetchEntriesByDate(date);
-    input.remove();
-  });
-  input.addEventListener('blur', () => setTimeout(() => input.remove(), 250));
-  document.body.appendChild(input);
   if (typeof input.showPicker === 'function') {
-    input.showPicker();
-  } else {
-    input.focus();
-    input.click();
+    try { input.showPicker(); return; } catch (_) {}
   }
+  input.focus();
+  input.click();
+}
+function applyPickedDate(value) {
+  if (!value) return;
+  const date = dateUtils.parseIso(value);
+  if (!date) return;
+  state.selectedDate = date;
+  api.fetchEntriesByDate(date);
 }
 function metric(icon, label, current, target, achieved = false) {
   const row = document.createElement('div'); row.className = `summary-metric ${achieved ? 'on-target' : ''}`;
@@ -65,18 +58,30 @@ export function render() {
 export function renderMain() {
   const container = document.createElement('main'); container.className = 'screen main active page'; addSwipe(container);
   if (api.isDemoMode()) { const demo = document.createElement('div'); demo.className = 'demo-banner'; demo.textContent = 'DEMO MODE — changes are not saved to Google Sheets'; container.appendChild(demo); }
-  const hero = document.createElement('section'); hero.className = 'card hero-card';
-  const brand = document.createElement('div'); brand.className = 'brand-row';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.9</div></div>');
-  brand.append(title, button(`${e().emojiSettings} Settings`, 'btn-outline compact-button', () => navigate('settings')));
-  const nav = document.createElement('div'); nav.className = 'date-navigation';
-  nav.append(button(e().emojiPrevious, 'date-button', () => changeDay(-1), 'Previous day'));
-  const selected = button('', 'selected-date', chooseDate); selected.innerHTML = `<strong>${dateUtils.getDayName(state.selectedDate)}</strong><span>${dateUtils.formatDisplay(state.selectedDate)}</span>`; nav.append(selected);
-  nav.append(button(e().emojiNext, 'date-button', () => changeDay(1), 'Next day'));
-  const hint = document.createElement('p'); hint.className = 'subtle-label centered'; hint.textContent = 'Swipe left or right to change day on mobile.';
-  hero.append(brand, nav, hint); container.appendChild(hero);
+
+  const hero = document.createElement('section'); hero.className = 'card hero-card compact-hero-card';
+  const left = document.createElement('div'); left.className = 'compact-hero-left';
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.10</div></div>');
+  left.append(title, button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day'));
 
   const selectedIso = dateUtils.toIso(state.selectedDate);
+  const center = document.createElement('div'); center.className = 'compact-hero-center';
+  const dateWrap = document.createElement('div'); dateWrap.className = 'date-picker-wrap';
+  const selected = button('', 'selected-date compact-selected-date', () => chooseDate(dateInput), 'Select date');
+  selected.innerHTML = `<strong>${dateUtils.getDayName(state.selectedDate)}</strong><span>${dateUtils.formatDisplay(state.selectedDate)}</span>`;
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.className = 'native-date-picker';
+  dateInput.value = selectedIso;
+  dateInput.setAttribute('aria-label', 'Select date');
+  dateInput.addEventListener('change', () => applyPickedDate(dateInput.value));
+  dateWrap.append(selected, dateInput);
+  center.appendChild(dateWrap);
+
+  const right = document.createElement('div'); right.className = 'compact-hero-right';
+  right.append(button(`${e().emojiSettings} Settings`, 'btn-outline compact-button', () => navigate('settings')), button(e().emojiNext, 'date-button compact-nav-button', () => changeDay(1), 'Next day'));
+  hero.append(left, center, right); container.appendChild(hero);
+
   const day = calc.calculateDay(state.entries, e());
   const weekEntries = state.entriesFull.filter(entry => dateUtils.getWeekStart(entry.date) === dateUtils.getWeekStart(selectedIso));
   const week = calc.calculateWeek(weekEntries, e());
