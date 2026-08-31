@@ -14,11 +14,27 @@ function button(text, className, handler, title = '') {
 }
 function changeDay(offset) { const date = new Date(state.selectedDate); date.setDate(date.getDate() + offset); state.selectedDate = date; api.fetchEntriesByDate(date); }
 function chooseDate() {
-  const input = prompt('Select date (DD-MM-YYYY)', dateUtils.formatDisplay(state.selectedDate));
-  if (!input) return;
-  const date = dateUtils.parseDisplayDate(input);
-  if (!date) { alert('Use date format DD-MM-YYYY, for example 30-05-2026.'); return; }
-  state.selectedDate = date; api.fetchEntriesByDate(date);
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.className = 'native-date-picker';
+  input.value = dateUtils.toIso(state.selectedDate);
+  input.setAttribute('aria-label', 'Select date');
+  input.addEventListener('change', () => {
+    if (!input.value) { input.remove(); return; }
+    const date = dateUtils.parseIso(input.value);
+    if (!date) { input.remove(); return; }
+    state.selectedDate = date;
+    api.fetchEntriesByDate(date);
+    input.remove();
+  });
+  input.addEventListener('blur', () => setTimeout(() => input.remove(), 250));
+  document.body.appendChild(input);
+  if (typeof input.showPicker === 'function') {
+    input.showPicker();
+  } else {
+    input.focus();
+    input.click();
+  }
 }
 function metric(icon, label, current, target, achieved = false) {
   const row = document.createElement('div'); row.className = `summary-metric ${achieved ? 'on-target' : ''}`;
@@ -51,7 +67,7 @@ export function renderMain() {
   if (api.isDemoMode()) { const demo = document.createElement('div'); demo.className = 'demo-banner'; demo.textContent = 'DEMO MODE — changes are not saved to Google Sheets'; container.appendChild(demo); }
   const hero = document.createElement('section'); hero.className = 'card hero-card';
   const brand = document.createElement('div'); brand.className = 'brand-row';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.8</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.9</div></div>');
   brand.append(title, button(`${e().emojiSettings} Settings`, 'btn-outline compact-button', () => navigate('settings')));
   const nav = document.createElement('div'); nav.className = 'date-navigation';
   nav.append(button(e().emojiPrevious, 'date-button', () => changeDay(-1), 'Previous day'));
