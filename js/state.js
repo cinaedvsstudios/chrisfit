@@ -27,6 +27,7 @@ export const state = {
   entriesFull: [],
   foods: [],
   library: [],
+  guidance: [],
   weights: [],
   settings: { ...defaultSettings },
   sync: { phase: 'idle', pending: 0, message: '' },
