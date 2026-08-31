@@ -52,3 +52,22 @@
 .library-editor-row > input:first-child { text-align: center; font-size: 1.15rem; }
 .suggestion-button { display: flex; flex-direction: column; gap: .15rem; }
 .suggestion-button span { color: var(--color-text-secondary); font-size: .8rem; }
+
+
+.guidance-card { margin-top: .85rem; }
+.guidance-lines { display: grid; gap: .55rem; }
+.guidance-line {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: .75rem;
+  align-items: start;
+  padding: .62rem .7rem;
+  border: 1px solid var(--color-divider);
+  border-radius: 12px;
+  background: var(--color-surface-soft);
+}
+.guidance-line strong { color: var(--color-primary); }
+.guidance-line span { color: var(--color-text-primary); line-height: 1.35; }
+@media (max-width: 640px) {
+  .guidance-line { grid-template-columns: 1fr; gap: .2rem; }
+}
