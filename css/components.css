@@ -169,3 +169,53 @@
   .compact-selected-date strong { font-size: 1.25rem; }
   .compact-button { padding: .5rem .62rem; }
 }
+
+.copy-today-card {
+  display: flex;
+  justify-content: center;
+  margin: .85rem 0 calc(1.25rem + env(safe-area-inset-bottom));
+}
+.copy-today-button {
+  width: min(100%, 520px);
+  padding: .9rem 1rem;
+  font-size: 1rem;
+  font-weight: 750;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+}
+.copy-fallback-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0,0,0,.42);
+}
+.copy-fallback-card {
+  width: min(720px, 100%);
+  max-height: min(85vh, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  padding: 1rem;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: 0 12px 40px rgba(0,0,0,.28);
+}
+.copy-fallback-card .card-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.copy-fallback-textarea {
+  min-height: 360px;
+  width: 100%;
+  resize: vertical;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+@media (max-width: 640px) {
+  .copy-fallback-card { max-height: 90vh; }
+  .copy-fallback-textarea { min-height: 300px; }
+}
