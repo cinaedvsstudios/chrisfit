@@ -1,4 +1,4 @@
-import { state } from './state.js';
+import { state, showToast } from './state.js';
 import * as api from './api.js';
 import * as dateUtils from './date-utils.js';
 import * as calc from './calculations.js';
@@ -44,6 +44,86 @@ function logo() {
   image.addEventListener('error', () => { image.remove(); const fallback = document.createElement('span'); fallback.className = 'logo-fallback'; fallback.textContent = '🥦'; wrap.appendChild(fallback); });
   wrap.appendChild(image); return wrap;
 }
+function trendText(netCalories) {
+  const net = Number(netCalories) || 0;
+  if (net === 0) return '0.00 kg approx neutral';
+  const kg = Math.abs(net) / 7700;
+  return `${kg.toFixed(2)} kg approx ${net < 0 ? 'loss' : 'gain'}`;
+}
+function entryLine(entry) {
+  const value = Number(entry.calories) || 0;
+  return `- ${entry.name || 'Unnamed entry (imported)'}: ${value}`;
+}
+function buildCopyTodayText(day, week) {
+  const foodEntries = state.entries.filter(entry => Number(entry.calories) > 0);
+  const burnEntries = state.entries.filter(entry => Number(entry.calories) < 0);
+  const settings = e();
+  const lines = [
+    `ChrisFit — ${dateUtils.getDayName(state.selectedDate)} ${dateUtils.formatDisplay(state.selectedDate)}`,
+    '',
+    'DAILY SUMMARY',
+    `Food: ${day.intake} / ${settings.dailyCalories}`,
+    `Burn: ${day.burn} / ${settings.dailyBurnTarget}`,
+    `Deficit: ${day.net} / -${settings.dailyDeficit}`,
+    `Day · ${trendText(day.net)}`,
+    '',
+    'WEEKLY SUMMARY',
+    `Food: ${week.intake} / ${week.weeklyFoodTarget}`,
+    `Burn: ${week.burn} / ${week.weeklyBurnTarget}`,
+    `Deficit: ${week.net} / -${week.weeklyDeficitTarget}`,
+    `Week · ${trendText(week.net)}`,
+    '',
+    'FOOD ENTRIES',
+    ...(foodEntries.length ? foodEntries.map(entryLine) : ['- None logged']),
+    '',
+    'BURN ENTRIES',
+    ...(burnEntries.length ? burnEntries.map(entryLine) : ['- None logged'])
+  ];
+  return lines.join('\n');
+}
+function showManualCopyBox(text) {
+  const overlay = document.createElement('div');
+  overlay.className = 'copy-fallback-overlay';
+  const card = document.createElement('section');
+  card.className = 'copy-fallback-card';
+  const heading = document.createElement('div');
+  heading.className = 'card-heading';
+  heading.innerHTML = '<div><h2>Copy Today</h2><p>Clipboard access was blocked. Copy this manually.</p></div>';
+  const close = button('Close', 'btn-outline small-button', () => overlay.remove());
+  heading.appendChild(close);
+  const textarea = document.createElement('textarea');
+  textarea.className = 'copy-fallback-textarea';
+  textarea.value = text;
+  card.append(heading, textarea);
+  overlay.appendChild(card);
+  overlay.addEventListener('click', event => { if (event.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  textarea.focus();
+  textarea.select();
+}
+async function copyToday(day, week) {
+  const text = buildCopyTodayText(day, week);
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      textarea.remove();
+      if (!ok) throw new Error('Copy command failed');
+    }
+    showToast('Copied today to clipboard', 'success');
+  } catch (error) {
+    showManualCopyBox(text);
+    showToast('Clipboard blocked — copy manually', 'error', 4000);
+  }
+}
 let lastRenderedScreen = null;
 
 export function render() {
@@ -61,7 +141,7 @@ export function renderMain() {
 
   const hero = document.createElement('section'); hero.className = 'card hero-card compact-hero-card';
   const left = document.createElement('div'); left.className = 'compact-hero-left';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.10</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.11</div></div>');
   left.append(title, button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day'));
 
   const selectedIso = dateUtils.toIso(state.selectedDate);
@@ -130,5 +210,10 @@ export function renderMain() {
     row.append(identity, amount, rowActions); list.appendChild(row);
   });
   entries.appendChild(list); container.appendChild(entries);
+
+  const copy = document.createElement('section');
+  copy.className = 'copy-today-card';
+  copy.appendChild(button('📋 Copy Today', 'btn-purple copy-today-button', () => copyToday(day, week), 'Copy today and weekly summary to clipboard'));
+  container.appendChild(copy);
   return container;
 }
