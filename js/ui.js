@@ -29,9 +29,20 @@ function applyPickedDate(value) {
   state.selectedDate = date;
   api.fetchEntriesByDate(date);
 }
-function metric(icon, label, current, target, achieved = false) {
+function formatSigned(value) {
+  const number = Math.round(Number(value) || 0);
+  return `${number > 0 ? '+' : ''}${number}`;
+}
+function foodDelta(intake, target) { return Number(target || 0) - Number(intake || 0); }
+function burnDelta(burn, target) { return Number(burn || 0) - Number(target || 0); }
+function deficitDelta(net, targetDeficit) { return -Math.abs(Number(targetDeficit || 0)) - Number(net || 0); }
+function metric(icon, label, current, target, delta, achieved = false) {
+  const deltaNumber = Math.round(Number(delta) || 0);
+  const deltaClass = deltaNumber >= 0 ? 'summary-delta-good' : 'summary-delta-bad';
+  const targetText = target === undefined ? '' : ` / ${target}`;
+  const deltaText = delta === undefined ? '' : ` / <span class="summary-delta ${deltaClass}">${formatSigned(deltaNumber)}</span>`;
   const row = document.createElement('div'); row.className = `summary-metric ${achieved ? 'on-target' : ''}`;
-  row.innerHTML = `<span>${icon} ${label}</span><strong>${current}${target === undefined ? '' : ` / ${target}`}</strong>`; return row;
+  row.innerHTML = `<span>${icon} ${label}</span><strong class="summary-values"><span>${current}${targetText}</span>${deltaText}</strong>`; return row;
 }
 function addSwipe(container) {
   let start = null;
@@ -58,19 +69,25 @@ function buildCopyTodayText(day, week) {
   const foodEntries = state.entries.filter(entry => Number(entry.calories) > 0);
   const burnEntries = state.entries.filter(entry => Number(entry.calories) < 0);
   const settings = e();
+  const dayFoodDelta = foodDelta(day.intake, settings.dailyCalories);
+  const dayBurnDelta = burnDelta(day.burn, settings.dailyBurnTarget);
+  const dayDeficitDelta = deficitDelta(day.net, settings.dailyDeficit);
+  const weekFoodDelta = foodDelta(week.intake, week.weeklyFoodTarget);
+  const weekBurnDelta = burnDelta(week.burn, week.weeklyBurnTarget);
+  const weekDeficitDelta = deficitDelta(week.net, week.weeklyDeficitTarget);
   const lines = [
     `ChrisFit — ${dateUtils.getDayName(state.selectedDate)} ${dateUtils.formatDisplay(state.selectedDate)}`,
     '',
     'DAILY SUMMARY',
-    `Food: ${day.intake} / ${settings.dailyCalories}`,
-    `Burn: ${day.burn} / ${settings.dailyBurnTarget}`,
-    `Deficit: ${day.net} / -${settings.dailyDeficit}`,
+    `Food: ${day.intake} / ${settings.dailyCalories} / ${formatSigned(dayFoodDelta)}`,
+    `Burn: ${day.burn} / ${settings.dailyBurnTarget} / ${formatSigned(dayBurnDelta)}`,
+    `Deficit: ${day.net} / -${settings.dailyDeficit} / ${formatSigned(dayDeficitDelta)}`,
     `Day · ${trendText(day.net)}`,
     '',
     'WEEKLY SUMMARY',
-    `Food: ${week.intake} / ${week.weeklyFoodTarget}`,
-    `Burn: ${week.burn} / ${week.weeklyBurnTarget}`,
-    `Deficit: ${week.net} / -${week.weeklyDeficitTarget}`,
+    `Food: ${week.intake} / ${week.weeklyFoodTarget} / ${formatSigned(weekFoodDelta)}`,
+    `Burn: ${week.burn} / ${week.weeklyBurnTarget} / ${formatSigned(weekBurnDelta)}`,
+    `Deficit: ${week.net} / -${week.weeklyDeficitTarget} / ${formatSigned(weekDeficitDelta)}`,
     `Week · ${trendText(week.net)}`,
     '',
     'FOOD ENTRIES',
@@ -141,7 +158,7 @@ export function renderMain() {
 
   const hero = document.createElement('section'); hero.className = 'card hero-card compact-hero-card';
   const left = document.createElement('div'); left.className = 'compact-hero-left';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.11</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.12</div></div>');
   left.append(title, button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day'));
 
   const selectedIso = dateUtils.toIso(state.selectedDate);
@@ -165,10 +182,16 @@ export function renderMain() {
   const day = calc.calculateDay(state.entries, e());
   const weekEntries = state.entriesFull.filter(entry => dateUtils.getWeekStart(entry.date) === dateUtils.getWeekStart(selectedIso));
   const week = calc.calculateWeek(weekEntries, e());
+  const dailyFoodDelta = foodDelta(day.intake, e().dailyCalories);
+  const dailyBurnDelta = burnDelta(day.burn, e().dailyBurnTarget);
+  const dailyDeficitDelta = deficitDelta(day.net, e().dailyDeficit);
+  const weeklyFoodDelta = foodDelta(week.intake, week.weeklyFoodTarget);
+  const weeklyBurnDelta = burnDelta(week.burn, week.weeklyBurnTarget);
+  const weeklyDeficitDelta = deficitDelta(week.net, week.weeklyDeficitTarget);
   const daily = document.createElement('article'); daily.className = 'card summary-card'; daily.innerHTML = '<h2>Daily Summary</h2>';
-  daily.append(metric(e().emojiFood, 'Food', day.intake, e().dailyCalories), metric(e().emojiBurn, 'Burn', day.burn, e().dailyBurnTarget), metric(e().emojiDeficit, 'Deficit', day.net, `-${e().dailyDeficit}`, day.achieved));
+  daily.append(metric(e().emojiFood, 'Food', day.intake, e().dailyCalories, dailyFoodDelta), metric(e().emojiBurn, 'Burn', day.burn, e().dailyBurnTarget, dailyBurnDelta), metric(e().emojiDeficit, 'Deficit', day.net, `-${e().dailyDeficit}`, dailyDeficitDelta, day.achieved));
   const weekly = document.createElement('article'); weekly.className = 'card summary-card'; weekly.innerHTML = '<h2>Weekly Summary</h2>';
-  weekly.append(metric(e().emojiFood, 'Food', week.intake, week.weeklyFoodTarget), metric(e().emojiBurn, 'Burn', week.burn, week.weeklyBurnTarget), metric(e().emojiDeficit, 'Deficit', week.net, `-${week.weeklyDeficitTarget}`, week.achieved));
+  weekly.append(metric(e().emojiFood, 'Food', week.intake, week.weeklyFoodTarget, weeklyFoodDelta), metric(e().emojiBurn, 'Burn', week.burn, week.weeklyBurnTarget, weeklyBurnDelta), metric(e().emojiDeficit, 'Deficit', week.net, `-${week.weeklyDeficitTarget}`, weeklyDeficitDelta, week.achieved));
   const selectedWeight = calc.getWeightForDate(state.weights, selectedIso);
   const weight = document.createElement('article'); weight.className = 'card summary-card weight-summary';
   if (selectedWeight) {
