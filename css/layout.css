@@ -24,6 +24,10 @@
 .summary-metric:last-child { border: 0; }
 .summary-metric strong { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
 .summary-metric.on-target strong { color: var(--color-green); }
+.summary-values { display: inline-flex; align-items: center; justify-content: flex-end; gap: .35rem; flex-wrap: wrap; text-align: right; }
+.summary-delta { font-weight: 800; }
+.summary-delta-good { color: var(--color-green) !important; }
+.summary-delta-bad { color: var(--color-red) !important; }
 .weight-value { font-size: 1.38rem; font-weight: 700; margin: .55rem 0 .2rem; }
 .inline-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .8rem; }
 .inline-actions button { flex: 1; padding: .55rem .6rem; }
@@ -41,3 +45,7 @@
 .entry-amount { font-weight: 700; font-variant-numeric: tabular-nums; }
 .entry-actions { display: flex; gap: .2rem; align-items: center; }
 .empty-state { color: var(--color-text-secondary); padding: .85rem 0; }
+@media (max-width: 520px) {
+  .summary-metric { align-items: flex-start; }
+  .summary-values { max-width: 72%; }
+}
