@@ -1,21 +1,27 @@
 /*
   ChrisFit Google Sheets access with optimistic background sync.
-  v2.5 adds:
-  - individual emoji metadata for Quick Add foods;
-  - a separate searchable Food Library;
-  - safe phone-import behaviour that can preserve web-configured foods/library.
+  v2.14 adds:
+  - range-based entry loading so startup only pulls the recent active window;
+  - Save Now and smarter reconnect actions;
+  - stale update/delete recovery when Google reports a missing record.
 */
 import { CONFIG } from './config.js';
 import { state, defaultSettings, setState, setSync, showToast } from './state.js';
 
 const QUEUE_KEY = 'chrisfit.pendingWrites.v3';
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 30000;
+const INITIAL_ENTRY_WINDOW_DAYS = 30;
+const ENTRY_RANGE_BEFORE_DAYS = 45;
+const ENTRY_RANGE_AFTER_DAYS = 45;
 const mem = { nextId: 1, entries: [], foods: [], library: [], weights: [], settings: { ...defaultSettings } };
 const remote = { entries: [], foods: [], library: [], weights: [], settings: { ...defaultSettings } };
 let pending = readQueue_();
 let flushing = false;
 let flushTimer = null;
 let reconnecting = false;
+let savingNow = false;
+let entriesLoading = null;
+let loadedEntryRanges = [];
 
 export function isDemoMode() { return !CONFIG.baseUrl; }
 function clone_(value) { return JSON.parse(JSON.stringify(value)); }
@@ -28,6 +34,52 @@ function toISODate_(date) {
   const d = date instanceof Date ? date : new Date(date);
   const pad = value => String(value).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function dateFromIso_(iso) {
+  const [year, month, day] = toISODate_(iso).split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+function addDaysIso_(iso, days) {
+  const date = dateFromIso_(iso);
+  date.setDate(date.getDate() + days);
+  return toISODate_(date);
+}
+function initialEntryRange_() {
+  const today = toISODate_(new Date());
+  return { from: addDaysIso_(today, -INITIAL_ENTRY_WINDOW_DAYS), to: today };
+}
+function rangeForDate_(date) {
+  const iso = toISODate_(date);
+  return { from: addDaysIso_(iso, -ENTRY_RANGE_BEFORE_DAYS), to: addDaysIso_(iso, ENTRY_RANGE_AFTER_DAYS) };
+}
+function normaliseRange_(from, to) {
+  let start = toISODate_(from);
+  let end = toISODate_(to);
+  if (start > end) [start, end] = [end, start];
+  return { from: start, to: end };
+}
+function rangeCovers_(date) {
+  const iso = toISODate_(date);
+  return loadedEntryRanges.some(range => range.from <= iso && iso <= range.to);
+}
+function activeEntryRange_() {
+  const selected = toISODate_(state.selectedDate);
+  return loadedEntryRanges.find(range => range.from <= selected && selected <= range.to) || rangeForDate_(selected);
+}
+function addLoadedRange_(from, to) {
+  const next = normaliseRange_(from, to);
+  loadedEntryRanges.push(next);
+  loadedEntryRanges = loadedEntryRanges
+    .sort((a, b) => a.from.localeCompare(b.from))
+    .reduce((merged, range) => {
+      const last = merged[merged.length - 1];
+      if (!last || addDaysIso_(last.to, 1) < range.from) {
+        merged.push({ ...range });
+      } else if (range.to > last.to) {
+        last.to = range.to;
+      }
+      return merged;
+    }, []);
 }
 function normaliseSettings_(settings = {}) { return { ...defaultSettings, ...(settings || {}), id: 1 }; }
 function normaliseFood_(food, index = 0) {
@@ -49,6 +101,15 @@ function normaliseLibrary_(item, index = 0) {
     amount: String(item.amount || '').trim(),
     calories: Number(item.calories),
     emoji: String(item.emoji || '').trim()
+  };
+}
+function normaliseEntry_(entry) {
+  return {
+    ...entry,
+    id: entry.id,
+    date: toISODate_(entry.date),
+    name: String(entry.name || '').trim(),
+    calories: Number(entry.calories)
   };
 }
 function endpoint_(action, params = {}) {
@@ -92,6 +153,15 @@ async function post_(action, body = {}) {
   if (!response.ok) throw new Error(`Backend HTTP error ${response.status}`);
   return assertApiResponse_(await response.json());
 }
+function isEntryOnlyOperation_(operation) {
+  return ['entries', 'updateEntry', 'deleteEntry'].includes(operation.type);
+}
+function isStaleRecordOperation_(operation) {
+  return /^update/i.test(operation.type) || /^delete/i.test(operation.type);
+}
+function isRecordNotFoundError_(error) {
+  return /record not found/i.test(String(error?.message || error || ''));
+}
 
 function findOperationForPendingAdd_(type, id) {
   return pending.find(operation => operation.type === type && String(operation.tempId) === String(id));
@@ -118,6 +188,7 @@ function effectiveSettings_() {
 }
 function renderEffective_() {
   const entriesFull = applyOperations_(remote.entries, 'entries', 'updateEntry', 'deleteEntry')
+    .map(normaliseEntry_)
     .sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
   const selected = toISODate_(state.selectedDate);
   const foods = applyOperations_(remote.foods, 'foods', 'updateFood', 'deleteFood')
@@ -135,7 +206,7 @@ function renderEffective_() {
   setState('library', library);
   setState('weights', weights);
   setState('settings', effectiveSettings_());
-  if (pending.length && !flushing) {
+  if (pending.length && !flushing && !reconnecting && !savingNow) {
     setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
   }
 }
@@ -175,33 +246,103 @@ function updateUnsentAdd_(id, addType, data) {
   return true;
 }
 
-async function loadRemoteData_() {
+async function loadBaseData_() {
   if (isDemoMode()) {
-    remote.entries = clone_(mem.entries);
     remote.foods = clone_(mem.foods);
     remote.library = clone_(mem.library);
     remote.weights = clone_(mem.weights);
     remote.settings = normaliseSettings_(mem.settings);
     return;
   }
-  const [settings, foods, library, entries, weights] = await Promise.all([
-    get_('settings'), get_('foods'), get_('library'), get_('entries'), get_('weights')
+  const [settings, foods, library, weights] = await Promise.all([
+    get_('settings'), get_('foods'), get_('library'), get_('weights')
   ]);
   remote.settings = normaliseSettings_(settings);
   remote.foods = (foods || []).map(normaliseFood_);
   remote.library = (library || []).map(normaliseLibrary_);
-  remote.entries = entries || [];
   remote.weights = weights || [];
 }
+async function loadEntriesRange_(from, to) {
+  const range = normaliseRange_(from, to);
+  if (isDemoMode()) {
+    remote.entries = clone_(mem.entries);
+    loadedEntryRanges = [range];
+    return range;
+  }
+  const entries = await get_('entries', range);
+  remote.entries = remote.entries
+    .filter(entry => {
+      const date = toISODate_(entry.date);
+      return date < range.from || date > range.to;
+    })
+    .concat((entries || []).map(normaliseEntry_));
+  addLoadedRange_(range.from, range.to);
+  return range;
+}
+async function loadRemoteData_(range = initialEntryRange_()) {
+  if (isDemoMode()) {
+    remote.entries = clone_(mem.entries);
+    await loadBaseData_();
+    loadedEntryRanges = [range];
+    return;
+  }
+  await loadBaseData_();
+  await loadEntriesRange_(range.from, range.to);
+}
+async function refreshActiveEntryRange_() {
+  const range = activeEntryRange_();
+  return loadEntriesRange_(range.from, range.to);
+}
+async function recoverMissingRecordQueue_() {
+  const before = pending.length;
+  pending = pending.filter(operation => !isStaleRecordOperation_(operation));
+  const removed = before - pending.length;
+  saveQueue_();
+  try { await refreshActiveEntryRange_(); } catch (error) { console.warn('Could not refresh after stale queue cleanup:', error); }
+  renderEffective_();
+  if (removed) showToast(`Removed ${removed} stale queued edit/delete ${removed === 1 ? 'action' : 'actions'}`, 'info', 3800);
+  if (pending.length) setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} still queued`);
+  else setSync('saved', 0, 'Saved');
+}
 export async function initialise() {
-  setSync('loading', pending.length, 'Loading…');
-  await loadRemoteData_();
+  const range = initialEntryRange_();
+  setSync('loading', pending.length, 'Loading recent data…');
+  await loadRemoteData_(range);
   renderEffective_();
   if (pending.length && !isDemoMode()) {
     setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
     scheduleFlush_(150);
   } else {
     setSync('saved', 0, isDemoMode() ? 'Demo mode' : 'Connected');
+  }
+}
+export async function ensureEntriesForDate(date) {
+  const iso = toISODate_(date);
+  if (isDemoMode() || rangeCovers_(iso)) {
+    fetchEntriesByDate(iso, false);
+    return true;
+  }
+  if (entriesLoading) {
+    await entriesLoading;
+    fetchEntriesByDate(iso, false);
+    if (rangeCovers_(iso)) return true;
+  }
+  const range = rangeForDate_(iso);
+  setSync('loading', pending.length, `Loading entries around ${iso}…`);
+  entriesLoading = loadEntriesRange_(range.from, range.to);
+  try {
+    await entriesLoading;
+    renderEffective_();
+    if (pending.length) setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
+    else setSync('saved', 0, 'Connected');
+    return true;
+  } catch (error) {
+    console.error('Could not load entries for date:', error);
+    setSync('error', pending.length, 'Could not load that date');
+    showToast(`Could not load date: ${error.message}`, 'error', 4200);
+    return false;
+  } finally {
+    entriesLoading = null;
   }
 }
 export async function reconnect() {
@@ -217,8 +358,9 @@ export async function reconnect() {
   const queued = pending.length;
   setSync('loading', queued, queued ? `Reconnecting — saving ${queued} queued change${queued === 1 ? '' : 's'}…` : 'Reconnecting…');
   try {
-    if (pending.length && !isDemoMode()) await flushPending();
-    await loadRemoteData_();
+    if (pending.length && !isDemoMode()) await flushPending({ reload: false, suppressSavedToast: true });
+    await loadBaseData_();
+    await refreshActiveEntryRange_();
     renderEffective_();
     if (pending.length && !isDemoMode()) {
       setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} still queued`);
@@ -230,6 +372,10 @@ export async function reconnect() {
     return true;
   } catch (error) {
     console.error('Reconnect failed:', error);
+    if (isRecordNotFoundError_(error)) {
+      await recoverMissingRecordQueue_();
+      return false;
+    }
     renderEffective_();
     setSync('error', pending.length, 'Reconnect failed — changes queued');
     showToast(`Reconnect failed: ${error.message}`, 'error', 4200);
@@ -238,8 +384,36 @@ export async function reconnect() {
     reconnecting = false;
   }
 }
-export async function flushPending() {
-  if (isDemoMode() || flushing || pending.length === 0) return;
+export async function saveNow() {
+  if (savingNow || flushing) {
+    showToast('Save already running', 'info', 1600);
+    return false;
+  }
+  if (isDemoMode()) {
+    showToast('Demo mode — nothing to save', 'info', 1800);
+    return true;
+  }
+  if (!pending.length) {
+    setSync('saved', 0, 'Saved');
+    showToast('No changes to save', 'info', 1600);
+    return true;
+  }
+  savingNow = true;
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  setSync('saving', pending.length, `Saving ${pending.length} queued change${pending.length === 1 ? '' : 's'} now…`);
+  try {
+    return await flushPending();
+  } finally {
+    savingNow = false;
+  }
+}
+export async function flushPending(options = {}) {
+  if (isDemoMode()) return true;
+  if (flushing) return false;
+  if (pending.length === 0) return true;
   flushing = true;
   const batch = pending.slice();
   setSync('saving', batch.length, `Saving ${batch.length} change${batch.length === 1 ? '' : 's'}…`);
@@ -248,17 +422,26 @@ export async function flushPending() {
     const complete = new Set(batch.map(operation => operation.queueId));
     pending = pending.filter(operation => !complete.has(operation.queueId));
     saveQueue_();
-    await loadRemoteData_();
+    if (options.reload !== false) {
+      if (batch.some(operation => !isEntryOnlyOperation_(operation))) await loadBaseData_();
+      await refreshActiveEntryRange_();
+    }
     renderEffective_();
     if (pending.length) scheduleFlush_(150);
     else {
       setSync('saved', 0, 'Saved');
-      showToast('Saved', 'success', 1600);
+      if (!options.suppressSavedToast) showToast('Saved', 'success', 1600);
     }
+    return true;
   } catch (error) {
     console.error('Sync failed:', error);
+    if (isRecordNotFoundError_(error)) {
+      await recoverMissingRecordQueue_();
+      return false;
+    }
     setSync('error', pending.length, 'Could not sync — changes queued');
     showToast(`Sync failed: ${error.message}`, 'error', 4200);
+    return false;
   } finally {
     flushing = false;
   }
@@ -293,8 +476,10 @@ function mutate_(type, data, tempId) {
   enqueue_({ type, data, ...(tempId ? { tempId } : {}) });
 }
 
-export function fetchEntriesByDate(date) {
-  setState('entries', state.entriesFull.filter(entry => entry.date === toISODate_(date)));
+export function fetchEntriesByDate(date, loadIfMissing = true) {
+  const iso = toISODate_(date);
+  setState('entries', state.entriesFull.filter(entry => entry.date === iso));
+  if (loadIfMissing && !rangeCovers_(iso)) ensureEntriesForDate(iso);
 }
 export function addEntry(date, name, calories) {
   const cleanName = String(name || '').trim();
@@ -412,32 +597,34 @@ export async function importData(data, options = {}) {
   const preserveFoods = options.preserveFoods !== false;
   pending = [];
   saveQueue_();
+  loadedEntryRanges = [];
   if (isDemoMode()) {
     mem.entries = data.entries.map(item => ({ id: generateId_(), ...item }));
     if (!preserveFoods) mem.foods = data.foods.map((item, index) => ({ id: generateId_(), ...item, sortOrder: index + 1, active: true, emoji: '' }));
     mem.weights = data.weights.map(item => ({ id: generateId_(), ...item }));
-    await loadRemoteData_();
+    await loadRemoteData_(initialEntryRange_());
     renderEffective_();
     return;
   }
   await post_('import', { ...data, preserveFoods });
-  await loadRemoteData_();
+  await loadRemoteData_(initialEntryRange_());
   renderEffective_();
   setSync('saved', 0, 'Imported');
 }
 export async function resetAllData() {
   pending = [];
   saveQueue_();
+  loadedEntryRanges = [];
   if (isDemoMode()) {
     mem.entries = [];
     mem.foods = [];
     mem.weights = [];
-    await loadRemoteData_();
+    await loadRemoteData_(initialEntryRange_());
     renderEffective_();
     return;
   }
   await post_('reset', {});
-  await loadRemoteData_();
+  await loadRemoteData_(initialEntryRange_());
   renderEffective_();
 }
 
@@ -449,7 +636,8 @@ export function getConnectionInfo() {
     online: navigator.onLine,
     pendingChanges: pending.length,
     syncPhase: state.sync.phase,
-    syncMessage: state.sync.message || '(none)'
+    syncMessage: state.sync.message || '(none)',
+    loadedEntryRanges: loadedEntryRanges.map(range => `${range.from} to ${range.to}`).join(', ') || '(none)'
   };
 }
 export function discardPendingChanges() {
@@ -463,9 +651,12 @@ export function discardPendingChanges() {
 }
 async function diagnosticRequest_(label, action, options = {}) {
   const started = performance.now();
-  const lines = [label, `${options.method || 'GET'} ${endpoint_(action)}`];
+  const params = options.params || {};
+  const fetchOptions = { ...options };
+  delete fetchOptions.params;
+  const lines = [label, `${fetchOptions.method || 'GET'} ${endpoint_(action, params)}`];
   try {
-    const response = await fetchWithTimeout_(endpoint_(action), options);
+    const response = await fetchWithTimeout_(endpoint_(action, params), fetchOptions);
     lines.push(
       `HTTP result: ${response.status}`,
       `Elapsed: ${Math.round(performance.now() - started)} ms`,
@@ -478,6 +669,7 @@ async function diagnosticRequest_(label, action, options = {}) {
 }
 export async function runConnectionDebugTest() {
   const info = getConnectionInfo();
+  const range = initialEntryRange_();
   const lines = [
     'ChrisFit Connection Debug Report',
     `Generated: ${new Date().toISOString()}`,
@@ -485,11 +677,12 @@ export async function runConnectionDebugTest() {
     `Mode: ${info.mode}`,
     `Endpoint: ${info.endpoint}`,
     `Pending local changes: ${info.pendingChanges}`,
+    `Loaded entry ranges: ${info.loadedEntryRanges}`,
     `Visible sync state: ${info.syncPhase} — ${info.syncMessage}`
   ];
   if (isDemoMode()) return `${lines.join('\n')}\n\nTEST NOT RUN: demo mode.`;
   lines.push('', await diagnosticRequest_('TEST 1 — Read settings', 'settings'));
-  lines.push('', await diagnosticRequest_('TEST 2 — Read entries', 'entries'));
+  lines.push('', await diagnosticRequest_('TEST 2 — Read recent entries', 'entries', { params: range }));
   lines.push('', await diagnosticRequest_('TEST 3 — Read food library', 'library'));
   lines.push('', await diagnosticRequest_('TEST 4 — Empty batch sync route', 'batch', {
     method: 'POST',
