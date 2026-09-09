@@ -172,15 +172,27 @@
 
 .copy-today-card {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: .55rem;
   margin: .85rem 0 calc(1.25rem + env(safe-area-inset-bottom));
 }
-.copy-today-button {
+.copy-today-button,
+.reconnect-button {
   width: min(100%, 520px);
   padding: .9rem 1rem;
   font-size: 1rem;
   font-weight: 750;
   box-shadow: 0 2px 8px rgba(0,0,0,.12);
+}
+.reconnect-button {
+  background: var(--color-surface-soft);
+}
+.entry-row.entry-pending .entry-amount {
+  font-style: italic;
+  font-weight: 400;
+  opacity: .72;
 }
 .copy-fallback-overlay {
   position: fixed;
