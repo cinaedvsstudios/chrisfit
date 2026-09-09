@@ -1,6 +1,6 @@
 /**
- * ChrisFit Web v2.6 Google Apps Script backend.
- * Adds Quick Add food emoji and a separate searchable Food Library.
+ * ChrisFit Web v2.14 Google Apps Script backend.
+ * Adds ranged entry reads for faster web startup and skips stale update/delete operations in batch sync.
  * Sheet layouts may be manually edited: columns are matched by header name, not position.
  */
 const SPREADSHEET_ID = '1rizJJ7oC2VbZPKYuMnlYD5WhhmEvLPcJM1OY_jD0bVM';
@@ -41,7 +41,7 @@ function doGet(e) {
     if (action === 'settings') return json_(getSettings_());
     if (action === 'foods') return json_(getFoods_());
     if (action === 'library') return json_(getLibrary_());
-    if (action === 'entries') return json_(getEntries_(e.parameter.date));
+    if (action === 'entries') return json_(getEntries_(e.parameter.date, e.parameter.from, e.parameter.to));
     if (action === 'weights') return json_(getWeights_());
     if (action === 'export') return json_(exportAndroidCompatibleData_());
     return error_('Unknown GET action: ' + action);
@@ -161,6 +161,18 @@ function parseBoolean_(value, fallback) {
   if (value === '' || value === undefined || value === null) return fallback;
   return value === true || String(value).toLowerCase() === 'true';
 }
+function isRecordNotFound_(error) {
+  return /record not found/i.test(String(error && error.message || error || ''));
+}
+function callSkippingMissing_(callback) {
+  try {
+    callback();
+    return false;
+  } catch (error) {
+    if (isRecordNotFound_(error)) return true;
+    throw error;
+  }
+}
 
 function getSettings_() {
   const target = sheet_('settings'), map = headerMap_('settings'), rows = target.getDataRange().getValues();
@@ -256,10 +268,20 @@ function updateLibrary_(data) {
   return { success: true };
 }
 
-function getEntries_(date) {
-  const target = sheet_('entries'), map = headerMap_('entries'), selected = date ? isoDate_(date) : '';
+function getEntries_(date, from, to) {
+  const target = sheet_('entries'), map = headerMap_('entries');
+  const selected = date ? isoDate_(date) : '';
+  const fromDate = from ? requiredDate_(from, 'From') : '';
+  const toDate = to ? requiredDate_(to, 'To') : '';
   return target.getDataRange().getValues().slice(1)
-    .filter(row => row[map.id] !== '' && (!selected || isoDate_(row[map.date]) === selected))
+    .filter(row => {
+      if (row[map.id] === '') return false;
+      const rowDate = isoDate_(row[map.date]);
+      if (selected && rowDate !== selected) return false;
+      if (fromDate && rowDate < fromDate) return false;
+      if (toDate && rowDate > toDate) return false;
+      return true;
+    })
     .map(row => ({ id: Number(row[map.id]), date: isoDate_(row[map.date]), name: String(row[map.name] || ''), calories: Number(row[map.calories]) }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 }
@@ -306,25 +328,26 @@ function batchOperations_(operations) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
+    let skippedMissing = 0;
     operations.forEach(operation => {
       const type = String(operation.type || '').toLowerCase(), data = operation.data || {};
       if (type === 'entries') addEntry_(data);
-      else if (type === 'updateentry') updateEntry_(data);
-      else if (type === 'deleteentry') deleteRowById_('entries', data.id);
+      else if (type === 'updateentry') skippedMissing += callSkippingMissing_(function() { updateEntry_(data); }) ? 1 : 0;
+      else if (type === 'deleteentry') skippedMissing += callSkippingMissing_(function() { deleteRowById_('entries', data.id); }) ? 1 : 0;
       else if (type === 'foods') addFood_(data);
-      else if (type === 'updatefood') updateFood_(data);
-      else if (type === 'deletefood') deleteRowById_('foods', data.id);
+      else if (type === 'updatefood') skippedMissing += callSkippingMissing_(function() { updateFood_(data); }) ? 1 : 0;
+      else if (type === 'deletefood') skippedMissing += callSkippingMissing_(function() { deleteRowById_('foods', data.id); }) ? 1 : 0;
       else if (type === 'library') addLibrary_(data);
-      else if (type === 'updatelibrary') updateLibrary_(data);
-      else if (type === 'deletelibrary') deleteRowById_('library', data.id);
+      else if (type === 'updatelibrary') skippedMissing += callSkippingMissing_(function() { updateLibrary_(data); }) ? 1 : 0;
+      else if (type === 'deletelibrary') skippedMissing += callSkippingMissing_(function() { deleteRowById_('library', data.id); }) ? 1 : 0;
       else if (type === 'weights') addWeight_(data);
-      else if (type === 'updateweight') updateWeight_(data);
-      else if (type === 'deleteweight') deleteRowById_('weights', data.id);
+      else if (type === 'updateweight') skippedMissing += callSkippingMissing_(function() { updateWeight_(data); }) ? 1 : 0;
+      else if (type === 'deleteweight') skippedMissing += callSkippingMissing_(function() { deleteRowById_('weights', data.id); }) ? 1 : 0;
       else if (type === 'settings') saveSettings_(data);
       else throw new Error('Unknown batch operation: ' + type);
     });
     SpreadsheetApp.flush();
-    return { success: true, processed: operations.length };
+    return { success: true, processed: operations.length, skippedMissing: skippedMissing };
   } finally { lock.releaseLock(); }
 }
 
