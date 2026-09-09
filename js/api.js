@@ -9,11 +9,13 @@ import { CONFIG } from './config.js';
 import { state, defaultSettings, setState, setSync, showToast } from './state.js';
 
 const QUEUE_KEY = 'chrisfit.pendingWrites.v3';
+const FETCH_TIMEOUT_MS = 15000;
 const mem = { nextId: 1, entries: [], foods: [], library: [], weights: [], settings: { ...defaultSettings } };
 const remote = { entries: [], foods: [], library: [], weights: [], settings: { ...defaultSettings } };
 let pending = readQueue_();
 let flushing = false;
 let flushTimer = null;
+let reconnecting = false;
 
 export function isDemoMode() { return !CONFIG.baseUrl; }
 function clone_(value) { return JSON.parse(JSON.stringify(value)); }
@@ -62,15 +64,27 @@ function assertApiResponse_(data) {
   if (data && data.success === false) throw new Error(data.error || 'Backend request failed');
   return data;
 }
+async function fetchWithTimeout_(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error(`Backend timed out after ${Math.round(timeoutMs / 1000)}s`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function get_(action, params = {}) {
   if (isDemoMode()) return undefined;
-  const response = await fetch(endpoint_(action, params));
+  const response = await fetchWithTimeout_(endpoint_(action, params));
   if (!response.ok) throw new Error(`Backend HTTP error ${response.status}`);
   return assertApiResponse_(await response.json());
 }
 async function post_(action, body = {}) {
   if (isDemoMode()) return undefined;
-  const response = await fetch(endpoint_(action), {
+  const response = await fetchWithTimeout_(endpoint_(action), {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(body)
@@ -188,6 +202,40 @@ export async function initialise() {
     scheduleFlush_(150);
   } else {
     setSync('saved', 0, isDemoMode() ? 'Demo mode' : 'Connected');
+  }
+}
+export async function reconnect() {
+  if (reconnecting) {
+    showToast('Reconnect already running', 'info', 1600);
+    return false;
+  }
+  reconnecting = true;
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  const queued = pending.length;
+  setSync('loading', queued, queued ? `Reconnecting — saving ${queued} queued change${queued === 1 ? '' : 's'}…` : 'Reconnecting…');
+  try {
+    if (pending.length && !isDemoMode()) await flushPending();
+    await loadRemoteData_();
+    renderEffective_();
+    if (pending.length && !isDemoMode()) {
+      setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} still queued`);
+      showToast('Reconnected — changes still queued', 'info', 3000);
+    } else {
+      setSync('saved', 0, isDemoMode() ? 'Demo mode refreshed' : 'Reconnected');
+      showToast('Reconnected', 'success', 1800);
+    }
+    return true;
+  } catch (error) {
+    console.error('Reconnect failed:', error);
+    renderEffective_();
+    setSync('error', pending.length, 'Reconnect failed — changes queued');
+    showToast(`Reconnect failed: ${error.message}`, 'error', 4200);
+    return false;
+  } finally {
+    reconnecting = false;
   }
 }
 export async function flushPending() {
@@ -417,7 +465,7 @@ async function diagnosticRequest_(label, action, options = {}) {
   const started = performance.now();
   const lines = [label, `${options.method || 'GET'} ${endpoint_(action)}`];
   try {
-    const response = await fetch(endpoint_(action), options);
+    const response = await fetchWithTimeout_(endpoint_(action), options);
     lines.push(
       `HTTP result: ${response.status}`,
       `Elapsed: ${Math.round(performance.now() - started)} ms`,
