@@ -179,7 +179,8 @@
   margin: .85rem 0 calc(1.25rem + env(safe-area-inset-bottom));
 }
 .copy-today-button,
-.reconnect-button {
+.reconnect-button,
+.save-now-button {
   width: min(100%, 520px);
   padding: .9rem 1rem;
   font-size: 1rem;
@@ -188,6 +189,9 @@
 }
 .reconnect-button {
   background: var(--color-surface-soft);
+}
+.save-now-button {
+  border: 1px solid transparent;
 }
 .entry-row.entry-pending .entry-amount {
   font-style: italic;
