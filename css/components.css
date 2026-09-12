@@ -31,7 +31,20 @@
 .food-editor-actions { display: flex; gap: .25rem; flex-wrap: wrap; }
 .diagnostic-panel { background: var(--color-surface-soft); }
 .diagnostic-status, .diagnostic-endpoint { color: var(--color-text-secondary); font-size: .85rem; margin: .38rem 0; overflow-wrap: anywhere; }
+.diagnostic-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin: .65rem 0; }
 .diagnostic-output { display: block; width: 100%; min-height: 10rem; margin-top: .65rem; resize: vertical; font: 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.diagnostic-report-mount { margin-top: .65rem; }
+.diagnostic-history-grid { display: grid; grid-template-columns: minmax(145px, .55fr) minmax(0, 1.45fr); gap: .8rem; align-items: start; }
+.diagnostic-report-dates { display: flex; flex-direction: column; gap: .45rem; }
+.diagnostic-date-button { border: 1px solid var(--color-divider); border-radius: 10px; padding: .6rem .65rem; background: var(--color-surface); color: var(--color-text-primary); text-align: left; font-weight: 650; }
+.diagnostic-date-button.selected { border-color: var(--color-primary); background: var(--color-primary-soft); color: var(--color-primary); }
+.diagnostic-report-list { display: flex; flex-direction: column; gap: .65rem; min-width: 0; }
+.diagnostic-report-card { padding: .72rem; border: 1px solid var(--color-divider); border-radius: 12px; background: var(--color-surface); min-width: 0; }
+.diagnostic-report-card-heading { display: flex; flex-direction: column; gap: .16rem; }
+.diagnostic-report-meta, .diagnostic-report-empty { color: var(--color-text-secondary); font-size: .82rem; }
+.diagnostic-report-summary { margin: .55rem 0; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.diagnostic-report-message { max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .62rem; border-radius: 10px; border: 1px solid var(--color-divider); background: var(--color-surface-soft); font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.diagnostic-report-actions { display: flex; gap: .45rem; flex-wrap: wrap; margin-top: .62rem; }
 .release-notes p, .release-notes li { color: var(--color-text-secondary); font-size: .88rem; line-height: 1.45; }
 .release-notes ul { margin: .5rem 0 0 1.15rem; padding: 0; }
 
@@ -234,4 +247,9 @@
 @media (max-width: 640px) {
   .copy-fallback-card { max-height: 90vh; }
   .copy-fallback-textarea { min-height: 300px; }
+  .diagnostic-actions { flex-direction: column; }
+  .diagnostic-actions button { width: 100%; }
+  .diagnostic-history-grid { grid-template-columns: 1fr; }
+  .diagnostic-report-dates { flex-direction: row; overflow-x: auto; padding-bottom: .15rem; }
+  .diagnostic-date-button { white-space: nowrap; }
 }
