@@ -1,15 +1,17 @@
 /*
   ChrisFit Google Sheets access with optimistic background sync.
-  v2.14 adds:
+  v2.15 adds local connection error reports in Settings.
+  v2.14 added:
   - range-based entry loading so startup only pulls the recent active window;
   - Save Now and smarter reconnect actions;
   - stale update/delete recovery when Google reports a missing record.
 */
 import { CONFIG } from './config.js';
 import { state, defaultSettings, setState, setSync, showToast } from './state.js';
+import { recordConnectionReport } from './connection-reports.js';
 
 const QUEUE_KEY = 'chrisfit.pendingWrites.v3';
-const FETCH_TIMEOUT_MS = 30000;
+const FETCH_TIMEOUT_MS = 15000;
 const INITIAL_ENTRY_WINDOW_DAYS = 30;
 const ENTRY_RANGE_BEFORE_DAYS = 45;
 const ENTRY_RANGE_AFTER_DAYS = 45;
@@ -162,6 +164,13 @@ function isStaleRecordOperation_(operation) {
 function isRecordNotFoundError_(error) {
   return /record not found/i.test(String(error?.message || error || ''));
 }
+function recordError_(source, label, action, error, extra = {}) {
+  try {
+    recordConnectionReport({ source, label, action, error, info: getConnectionInfo(), ...extra });
+  } catch (reportError) {
+    console.warn('Could not save connection error report:', reportError);
+  }
+}
 
 function findOperationForPendingAdd_(type, id) {
   return pending.find(operation => operation.type === type && String(operation.tempId) === String(id));
@@ -307,13 +316,23 @@ async function recoverMissingRecordQueue_() {
 export async function initialise() {
   const range = initialEntryRange_();
   setSync('loading', pending.length, 'Loading recent data…');
-  await loadRemoteData_(range);
-  renderEffective_();
-  if (pending.length && !isDemoMode()) {
-    setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
-    scheduleFlush_(150);
-  } else {
-    setSync('saved', 0, isDemoMode() ? 'Demo mode' : 'Connected');
+  try {
+    await loadRemoteData_(range);
+    renderEffective_();
+    if (pending.length && !isDemoMode()) {
+      setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
+      scheduleFlush_(150);
+    } else {
+      setSync('saved', 0, isDemoMode() ? 'Demo mode' : 'Connected');
+    }
+    return true;
+  } catch (error) {
+    console.error('Initial load failed:', error);
+    recordError_('startup', 'Initial load', 'initialise', error, { extra: { range } });
+    renderEffective_();
+    setSync('error', pending.length, 'Initial load failed — report saved');
+    showToast('Connection failed — report saved in Settings', 'error', 5000);
+    return false;
   }
 }
 export async function ensureEntriesForDate(date) {
@@ -338,7 +357,8 @@ export async function ensureEntriesForDate(date) {
     return true;
   } catch (error) {
     console.error('Could not load entries for date:', error);
-    setSync('error', pending.length, 'Could not load that date');
+    recordError_('date-load', `Load ${iso}`, 'entries', error, { url: endpoint_('entries', range), extra: { range } });
+    setSync('error', pending.length, 'Could not load that date — report saved');
     showToast(`Could not load date: ${error.message}`, 'error', 4200);
     return false;
   } finally {
@@ -372,13 +392,14 @@ export async function reconnect() {
     return true;
   } catch (error) {
     console.error('Reconnect failed:', error);
+    recordError_('reconnect', 'Manual reconnect', 'reconnect', error);
     if (isRecordNotFoundError_(error)) {
       await recoverMissingRecordQueue_();
       return false;
     }
     renderEffective_();
-    setSync('error', pending.length, 'Reconnect failed — changes queued');
-    showToast(`Reconnect failed: ${error.message}`, 'error', 4200);
+    setSync('error', pending.length, 'Reconnect failed — report saved');
+    showToast(`Reconnect failed: ${error.message}. Report saved in Settings.`, 'error', 5200);
     return false;
   } finally {
     reconnecting = false;
@@ -435,12 +456,13 @@ export async function flushPending(options = {}) {
     return true;
   } catch (error) {
     console.error('Sync failed:', error);
+    recordError_('sync', 'Save queued changes', 'batch', error, { method: 'POST', url: endpoint_('batch'), extra: { queued: batch.length, reload: options.reload !== false } });
     if (isRecordNotFoundError_(error)) {
       await recoverMissingRecordQueue_();
       return false;
     }
-    setSync('error', pending.length, 'Could not sync — changes queued');
-    showToast(`Sync failed: ${error.message}`, 'error', 4200);
+    setSync('error', pending.length, 'Could not sync — report saved');
+    showToast(`Sync failed: ${error.message}. Report saved in Settings.`, 'error', 5200);
     return false;
   } finally {
     flushing = false;
@@ -630,10 +652,12 @@ export async function resetAllData() {
 
 export function getConnectionInfo() {
   return {
+    appVersion: 'Web · v2.15',
     mode: isDemoMode() ? 'demo' : 'google-apps-script',
     endpoint: CONFIG.baseUrl || '(not configured)',
     tokenConfigured: Boolean(CONFIG.token),
     online: navigator.onLine,
+    timeoutMs: FETCH_TIMEOUT_MS,
     pendingChanges: pending.length,
     syncPhase: state.sync.phase,
     syncMessage: state.sync.message || '(none)',
@@ -654,16 +678,20 @@ async function diagnosticRequest_(label, action, options = {}) {
   const params = options.params || {};
   const fetchOptions = { ...options };
   delete fetchOptions.params;
-  const lines = [label, `${fetchOptions.method || 'GET'} ${endpoint_(action, params)}`];
+  const url = endpoint_(action, params);
+  const method = fetchOptions.method || 'GET';
+  const lines = [label, `${method} ${url}`];
   try {
-    const response = await fetchWithTimeout_(endpoint_(action, params), fetchOptions);
+    const response = await fetchWithTimeout_(url, fetchOptions);
     lines.push(
       `HTTP result: ${response.status}`,
       `Elapsed: ${Math.round(performance.now() - started)} ms`,
       `Response body: ${(await response.text()).slice(0, 1200) || '(empty)'}`
     );
   } catch (error) {
-    lines.push(`FAILED after ${Math.round(performance.now() - started)} ms`, `${error.name || 'Error'}: ${error.message || String(error)}`);
+    const elapsedMs = Math.round(performance.now() - started);
+    recordError_('connection-test', label, action, error, { method, url, elapsedMs, extra: { params } });
+    lines.push(`FAILED after ${elapsedMs} ms`, `${error.name || 'Error'}: ${error.message || String(error)}`);
   }
   return lines.join('\n');
 }
@@ -673,21 +701,26 @@ export async function runConnectionDebugTest() {
   const lines = [
     'ChrisFit Connection Debug Report',
     `Generated: ${new Date().toISOString()}`,
+    `App version: ${info.appVersion}`,
     `App page: ${window.location.href}`,
     `Mode: ${info.mode}`,
     `Endpoint: ${info.endpoint}`,
+    `Timeout per request: ${Math.round(info.timeoutMs / 1000)}s`,
     `Pending local changes: ${info.pendingChanges}`,
     `Loaded entry ranges: ${info.loadedEntryRanges}`,
     `Visible sync state: ${info.syncPhase} — ${info.syncMessage}`
   ];
   if (isDemoMode()) return `${lines.join('\n')}\n\nTEST NOT RUN: demo mode.`;
-  lines.push('', await diagnosticRequest_('TEST 1 — Read settings', 'settings'));
-  lines.push('', await diagnosticRequest_('TEST 2 — Read recent entries', 'entries', { params: range }));
-  lines.push('', await diagnosticRequest_('TEST 3 — Read food library', 'library'));
-  lines.push('', await diagnosticRequest_('TEST 4 — Empty batch sync route', 'batch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ operations: [] })
-  }));
+  const results = await Promise.all([
+    diagnosticRequest_('TEST 1 — Read settings', 'settings'),
+    diagnosticRequest_('TEST 2 — Read recent entries', 'entries', { params: range }),
+    diagnosticRequest_('TEST 3 — Read food library', 'library'),
+    diagnosticRequest_('TEST 4 — Empty batch sync route', 'batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ operations: [] })
+    })
+  ]);
+  results.forEach(result => lines.push('', result));
   return lines.join('\n');
 }
