@@ -158,7 +158,7 @@ export function renderMain() {
 
   const hero = document.createElement('section'); hero.className = 'card hero-card compact-hero-card';
   const left = document.createElement('div'); left.className = 'compact-hero-left';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.14</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.15</div></div>');
   left.append(title, button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day'));
 
   const selectedIso = dateUtils.toIso(state.selectedDate);
