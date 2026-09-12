@@ -1,5 +1,6 @@
 import { state, defaultSettings, showToast } from './state.js';
 import * as api from './api.js';
+import * as reports from './connection-reports.js';
 import { navigate } from './navigation.js';
 import { getThemePreference, setThemePreference } from './theme.js';
 
@@ -29,6 +30,139 @@ function panel(title) {
   h.textContent = title;
   section.appendChild(h);
   return section;
+}
+async function copyText_(text, successMessage = 'Copied') {
+  if (!text) {
+    showToast('Nothing to copy yet', 'error');
+    return false;
+  }
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      textarea.remove();
+      if (!ok) throw new Error('Copy command failed');
+    }
+    showToast(successMessage, 'success');
+    return true;
+  } catch (error) {
+    showToast(`Copy failed: ${error.message || String(error)}`, 'error', 4200);
+    return false;
+  }
+}
+function localIso_(date = new Date()) {
+  const pad = value => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+function addDays_(date, days) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+function dateLabel_(iso) {
+  const today = localIso_(new Date());
+  const yesterday = localIso_(addDays_(new Date(), -1));
+  if (iso === today) return 'Today';
+  if (iso === yesterday) return 'Yesterday';
+  const date = new Date(`${iso}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+}
+function timeLabel_(iso) {
+  const date = new Date(iso || '');
+  return Number.isNaN(date.getTime()) ? '(unknown time)' : date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+function renderConnectionReports_(mount, selected) {
+  const allReports = reports.getConnectionReports();
+  const dates = reports.getConnectionReportDates();
+  mount.innerHTML = '';
+  if (!allReports.length) {
+    const empty = document.createElement('p');
+    empty.className = 'diagnostic-report-empty';
+    empty.textContent = 'No local connection error reports saved yet.';
+    mount.appendChild(empty);
+    selected.day = '';
+    return;
+  }
+  if (!selected.day || !dates.includes(selected.day)) selected.day = dates[0];
+
+  const grid = document.createElement('div');
+  grid.className = 'diagnostic-history-grid';
+  const dateColumn = document.createElement('div');
+  dateColumn.className = 'diagnostic-report-dates';
+  const reportColumn = document.createElement('div');
+  reportColumn.className = 'diagnostic-report-list';
+
+  dates.forEach(day => {
+    const count = allReports.filter(report => report.day === day).length;
+    const dateButton = button(`${dateLabel_(day)} (${count})`, `diagnostic-date-button ${day === selected.day ? 'selected' : ''}`);
+    dateButton.addEventListener('click', () => {
+      selected.day = day;
+      renderConnectionReports_(mount, selected);
+    });
+    dateColumn.appendChild(dateButton);
+  });
+
+  const clearDay = button('🧹 Clear selected day', 'btn-outline small-button');
+  clearDay.addEventListener('click', () => {
+    if (!selected.day) return;
+    reports.clearConnectionReportsForDate(selected.day);
+    renderConnectionReports_(mount, selected);
+    showToast('Error reports cleared for selected day', 'info');
+  });
+  dateColumn.appendChild(clearDay);
+
+  const matching = allReports.filter(report => report.day === selected.day);
+  if (!matching.length) {
+    const empty = document.createElement('p');
+    empty.className = 'diagnostic-report-empty';
+    empty.textContent = 'No reports for this date.';
+    reportColumn.appendChild(empty);
+  }
+  matching.forEach(report => {
+    const card = document.createElement('article');
+    card.className = 'diagnostic-report-card';
+    const heading = document.createElement('div');
+    heading.className = 'diagnostic-report-card-heading';
+    const title = document.createElement('strong');
+    title.textContent = report.title || 'Connection error';
+    const meta = document.createElement('span');
+    meta.className = 'diagnostic-report-meta';
+    meta.textContent = `${timeLabel_(report.createdAt)} · ${report.action || report.source || 'connection'}${report.elapsedMs ? ` · ${report.elapsedMs} ms` : ''}`;
+    heading.append(title, meta);
+
+    const summary = document.createElement('p');
+    summary.className = 'diagnostic-report-summary';
+    summary.textContent = report.message || '(no error message)';
+
+    const details = document.createElement('pre');
+    details.className = 'diagnostic-report-message';
+    details.textContent = reports.formatConnectionReport(report);
+
+    const actions = document.createElement('div');
+    actions.className = 'diagnostic-report-actions';
+    const copy = button('📋 Copy', 'btn-outline small-button');
+    copy.addEventListener('click', () => copyText_(reports.formatConnectionReport(report), 'Error report copied'));
+    const remove = button('🗑️ Delete', 'btn-red small-button');
+    remove.addEventListener('click', () => {
+      reports.deleteConnectionReport(report.id);
+      renderConnectionReports_(mount, selected);
+      showToast('Error report deleted', 'info');
+    });
+    actions.append(copy, remove);
+    card.append(heading, summary, details, actions);
+    reportColumn.appendChild(card);
+  });
+
+  grid.append(dateColumn, reportColumn);
+  mount.appendChild(grid);
 }
 function saveFoodRow(food) {
   const row = document.createElement('div');
@@ -310,7 +444,7 @@ export function renderSettings() {
   const info = api.getConnectionInfo();
   const status = document.createElement('p');
   status.className = 'diagnostic-status';
-  status.textContent = `Mode: ${info.mode} · Pending local changes: ${info.pendingChanges} · State: ${info.syncPhase}`;
+  status.textContent = `Mode: ${info.mode} · Pending local changes: ${info.pendingChanges} · State: ${info.syncPhase} · Timeout: ${Math.round(info.timeoutMs / 1000)}s`;
   const endpoint = document.createElement('p');
   endpoint.className = 'diagnostic-endpoint';
   endpoint.textContent = `Endpoint: ${info.endpoint}`;
@@ -318,18 +452,46 @@ export function renderSettings() {
   output.className = 'diagnostic-output';
   output.readOnly = true;
   output.placeholder = 'Run the connection test to see exact results.';
+  const actions = document.createElement('div');
+  actions.className = 'diagnostic-actions';
   const run = button('▶️ Run Connection Test', 'btn-outline');
-  run.addEventListener('click', async () => { output.value = 'Testing…'; output.value = await api.runConnectionDebugTest(); });
   const copy = button('📋 Copy Debug Report', 'btn-outline');
-  copy.addEventListener('click', async () => { await navigator.clipboard.writeText(output.value); showToast('Debug report copied', 'success'); });
   const discard = button('🧹 Discard Unsynced Local Changes', 'btn-red');
+  const reportState = { day: reports.getConnectionReportDates()[0] || '' };
+  const reportIntro = document.createElement('p');
+  reportIntro.className = 'settings-note';
+  reportIntro.textContent = 'Local error reports are saved only on this device and kept for the most recent 5 error days.';
+  const reportMount = document.createElement('div');
+  reportMount.className = 'diagnostic-report-mount';
+  renderConnectionReports_(reportMount, reportState);
+  run.addEventListener('click', async () => {
+    run.disabled = true;
+    output.value = 'Testing…';
+    try {
+      output.value = await api.runConnectionDebugTest();
+      showToast('Connection test finished', 'info');
+    } catch (error) {
+      reports.recordConnectionReport({ source: 'settings', label: 'Run Connection Test crashed', action: 'runConnectionDebugTest', error, info: api.getConnectionInfo() });
+      output.value = `Connection test crashed before it could finish.\n\n${error.message || String(error)}`;
+      showToast('Connection test crashed — report saved', 'error', 4200);
+    } finally {
+      run.disabled = false;
+      reportState.day = reports.getConnectionReportDates()[0] || reportState.day;
+      renderConnectionReports_(reportMount, reportState);
+    }
+  });
+  copy.addEventListener('click', async () => {
+    const fallbackReport = reports.getConnectionReports()[0];
+    await copyText_(output.value || reports.formatConnectionReport(fallbackReport), 'Debug report copied');
+  });
   discard.addEventListener('click', () => api.discardPendingChanges());
-  debug.append(status, endpoint, run, copy, discard, output);
+  actions.append(run, copy, discard);
+  debug.append(status, endpoint, actions, output, reportIntro, reportMount);
   content.appendChild(debug);
 
   const notes = panel('ℹ️ Release Notes');
   notes.classList.add('release-notes');
-  notes.innerHTML += `<p><strong>ChrisFit Web · v2.7</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Added Month and Custom Period summary cards underneath the selected week in History.</li><li>Custom Period remembers the last selected date range in this browser until changed.</li><li>No Apps Script or Google Sheet schema update is required for this release.</li><li>Retains v2.6 weight carry-forward, monthly weight history, Food Library and food-specific emoji support.</li></ul>`;
+  notes.innerHTML += `<p><strong>ChrisFit Web · v2.15</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Added local connection error reports to Settings, grouped by error date and kept for the most recent 5 error days on this device.</li><li>Connection test now runs requests in parallel and uses the same timeout as app reconnect.</li><li>Startup, date-load, sync and reconnect failures save copyable reports locally.</li></ul>`;
   content.appendChild(notes);
 
   container.appendChild(content);
