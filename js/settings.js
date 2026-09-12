@@ -73,16 +73,32 @@ function dateLabel_(iso) {
   if (iso === today) return 'Today';
   if (iso === yesterday) return 'Yesterday';
   const date = new Date(`${iso}T12:00:00`);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short' });
 }
 function timeLabel_(iso) {
   const date = new Date(iso || '');
   return Number.isNaN(date.getTime()) ? '(unknown time)' : date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
+function combinedReportText_(day, dayReports) {
+  if (!dayReports.length) return `No reports for ${dateLabel_(day)}.`;
+  const divider = '\n\n────────────────────────\n\n';
+  return [
+    `ChrisFit Connection Error Reports — ${dateLabel_(day)} (${day})`,
+    `Combined errors: ${dayReports.length}`,
+    '',
+    dayReports.map((report, index) => {
+      return [
+        `ERROR ${index + 1} OF ${dayReports.length}`,
+        reports.formatConnectionReport(report)
+      ].join('\n');
+    }).join(divider)
+  ].join('\n');
+}
 function renderConnectionReports_(mount, selected) {
   const allReports = reports.getConnectionReports();
   const dates = reports.getConnectionReportDates();
   mount.innerHTML = '';
+
   if (!allReports.length) {
     const empty = document.createElement('p');
     empty.className = 'diagnostic-report-empty';
@@ -91,6 +107,7 @@ function renderConnectionReports_(mount, selected) {
     selected.day = '';
     return;
   }
+
   if (!selected.day || !dates.includes(selected.day)) selected.day = dates[0];
 
   const grid = document.createElement('div');
@@ -110,56 +127,56 @@ function renderConnectionReports_(mount, selected) {
     dateColumn.appendChild(dateButton);
   });
 
-  const clearDay = button('🧹 Clear selected day', 'btn-outline small-button');
-  clearDay.addEventListener('click', () => {
-    if (!selected.day) return;
-    reports.clearConnectionReportsForDate(selected.day);
-    renderConnectionReports_(mount, selected);
-    showToast('Error reports cleared for selected day', 'info');
-  });
-  dateColumn.appendChild(clearDay);
-
   const matching = allReports.filter(report => report.day === selected.day);
   if (!matching.length) {
     const empty = document.createElement('p');
     empty.className = 'diagnostic-report-empty';
     empty.textContent = 'No reports for this date.';
     reportColumn.appendChild(empty);
-  }
-  matching.forEach(report => {
+  } else {
+    const combinedText = combinedReportText_(selected.day, matching);
+    const latest = matching[0];
+    const oldest = matching[matching.length - 1];
     const card = document.createElement('article');
-    card.className = 'diagnostic-report-card';
+    card.className = 'diagnostic-report-card diagnostic-report-card-combined';
+
     const heading = document.createElement('div');
     heading.className = 'diagnostic-report-card-heading';
     const title = document.createElement('strong');
-    title.textContent = report.title || 'Connection error';
+    title.textContent = `${dateLabel_(selected.day)} — ${matching.length} error${matching.length === 1 ? '' : 's'}`;
     const meta = document.createElement('span');
     meta.className = 'diagnostic-report-meta';
-    meta.textContent = `${timeLabel_(report.createdAt)} · ${report.action || report.source || 'connection'}${report.elapsedMs ? ` · ${report.elapsedMs} ms` : ''}`;
+    meta.textContent = matching.length === 1
+      ? `${timeLabel_(latest.createdAt)} · ${latest.action || latest.source || 'connection'}${latest.elapsedMs ? ` · ${latest.elapsedMs} ms` : ''}`
+      : `${timeLabel_(oldest.createdAt)}–${timeLabel_(latest.createdAt)} · combined report`;
     heading.append(title, meta);
 
     const summary = document.createElement('p');
     summary.className = 'diagnostic-report-summary';
-    summary.textContent = report.message || '(no error message)';
+    summary.textContent = matching.length === 1
+      ? (latest.message || '(no error message)')
+      : `All ${matching.length} connection errors for this date are combined below. Use Copy to copy the whole selected day.`;
 
     const details = document.createElement('pre');
-    details.className = 'diagnostic-report-message';
-    details.textContent = reports.formatConnectionReport(report);
+    details.className = 'diagnostic-report-message diagnostic-report-message-combined';
+    details.textContent = combinedText;
 
     const actions = document.createElement('div');
     actions.className = 'diagnostic-report-actions';
-    const copy = button('📋 Copy', 'btn-outline small-button');
-    copy.addEventListener('click', () => copyText_(reports.formatConnectionReport(report), 'Error report copied'));
-    const remove = button('🗑️ Delete', 'btn-red small-button');
+    const copy = button('📋 Copy selected day', 'btn-outline small-button');
+    copy.addEventListener('click', () => copyText_(combinedText, 'Selected day error reports copied'));
+    const remove = button('🧹 Delete selected day', 'btn-red small-button');
     remove.addEventListener('click', () => {
-      reports.deleteConnectionReport(report.id);
+      if (!confirm(`Delete all connection error reports for ${dateLabel_(selected.day)}?`)) return;
+      reports.clearConnectionReportsForDate(selected.day);
+      selected.day = reports.getConnectionReportDates()[0] || '';
       renderConnectionReports_(mount, selected);
-      showToast('Error report deleted', 'info');
+      showToast('Selected day error reports deleted', 'info');
     });
     actions.append(copy, remove);
     card.append(heading, summary, details, actions);
     reportColumn.appendChild(card);
-  });
+  }
 
   grid.append(dateColumn, reportColumn);
   mount.appendChild(grid);
@@ -413,9 +430,7 @@ export function renderSettings() {
       try {
         const data = JSON.parse(await file.text());
         const count = `${data.entries?.length || 0} entries, ${data.foods?.length || 0} phone quick buttons and ${data.weights?.length || 0} weights`;
-        const preserveFoods = confirm(
-          `Import ${count}?\n\nRecommended: press OK to KEEP your current web Quick Add buttons and emoji, and import only the phone history/weights.\n\nPress Cancel to choose exact phone restore instead. Your Food Library is never removed.`
-        );
+        const preserveFoods = confirm(`Import ${count}?\n\nRecommended: press OK to KEEP your current web Quick Add buttons and emoji, and import only the phone history/weights.\n\nPress Cancel to choose exact phone restore instead. Your Food Library is never removed.`);
         if (preserveFoods) {
           await api.importData(data, { preserveFoods: true });
           showToast('Phone history imported; quick buttons kept', 'success', 4000);
@@ -460,7 +475,7 @@ export function renderSettings() {
   const reportState = { day: reports.getConnectionReportDates()[0] || '' };
   const reportIntro = document.createElement('p');
   reportIntro.className = 'settings-note';
-  reportIntro.textContent = 'Local error reports are saved only on this device and kept for the most recent 5 error days.';
+  reportIntro.textContent = 'Local error reports are saved only on this device and kept for the most recent 5 error days. Pick a date to view or copy all errors for that date in one report.';
   const reportMount = document.createElement('div');
   reportMount.className = 'diagnostic-report-mount';
   renderConnectionReports_(reportMount, reportState);
@@ -491,7 +506,7 @@ export function renderSettings() {
 
   const notes = panel('ℹ️ Release Notes');
   notes.classList.add('release-notes');
-  notes.innerHTML += `<p><strong>ChrisFit Web · v2.15</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Added local connection error reports to Settings, grouped by error date and kept for the most recent 5 error days on this device.</li><li>Connection test now runs requests in parallel and uses the same timeout as app reconnect.</li><li>Startup, date-load, sync and reconnect failures save copyable reports locally.</li></ul>`;
+  notes.innerHTML += `<p><strong>ChrisFit Web · v2.15</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Connection Debug now shows one selected-date error report card instead of one visible card per error.</li><li>Copy selected day copies all connection errors for that date as one combined report with dividers.</li><li>Local connection reports are still kept only on this device for the most recent 5 error days.</li></ul>`;
   content.appendChild(notes);
 
   container.appendChild(content);
