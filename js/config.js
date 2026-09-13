@@ -1,5 +1,5 @@
 /* Active ChrisFit Web configuration. */
 export const CONFIG = {
-  baseUrl: 'https://script.google.com/macros/s/AKfycbzzW9MH00GHJMhs6MIrctQwC4MpDHi33j0gdQi14lIKI0Z-_IGroEtvIBGFzVuInjXD/exec',
+  baseUrl: 'https://script.google.com/macros/s/AKfycbwiM61R-bfvWbbkciZBDYorbx9F3hgOXU85f5lyuC78kB1zJe1B4MmmHLw6eVk-XDeS/exec',
   token: ''
 };
