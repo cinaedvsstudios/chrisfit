@@ -1,130 +1,100 @@
 # ChrisFit v2.16 continuation checkpoint
 
-Status: backend compatibility phase implemented and tested. Apps Script deployment
-is the next step in the approved plan. Frontend remains v2.15; no frontend files
-have been changed or released. The complete user-supplied plan is in
-`docs/V2_16_LOCAL_FIRST_PLAN.md`.
+The backend is deployed and initialized. The frontend implementation is complete.
+The user authorized the original plan only; that plan is preserved in
+docs/V2_16_LOCAL_FIRST_PLAN.md. Do not request implementation authorization again.
 
-## Deploy the backend first
+## Completed
 
-1. Open the Apps Script project used by the current ChrisFit deployment.
-2. Replace its Code.gs with the complete `google-apps-script/Code.gs` in this repository.
-   Keep the existing spreadsheet ID, token configuration and deployment URL.
-3. Save. Select `setupSync` in the function menu and run it once.
-   It appends technical columns, creates `sync_meta`, and assigns missing library IDs
-   using the same existing setup behavior. Existing user data is preserved.
-4. Deploy > Manage deployments > select the existing web app > Edit.
-   Choose New version, then Deploy. Keep its current access/execution settings.
-   Editing the existing deployment preserves its URL.
-5. Open the existing /exec URL with `?action=manifest`.
-   It must return `backendVersion: "2.16"` and five numeric revisions.
-   Also check `?action=bootstrap` and the existing app before releasing the frontend.
-   If the deployment URL already has parameters, use & instead of ?.
+- Backend compatible v2.16 committed in 81f1ef5bd97a3a2783f1798db0a3acf071bef50c.
+- User saved/deployed Code.gs. Live manifest initially required setup; action=setup
+  was then run successfully on the existing deployment. No further Apps Script
+  redeployment is needed for the frontend commit.
+- Live setup returned backendVersion 2.16, cacheSchemaVersion 1, five revisions.
+- Live bootstrap returned valid settings, 22 foods, 22 library items, 450 entries
+  and 17 weights. Data validation passed against the new frontend validator.
+- Frontend reads a validated saved snapshot and renders before Google responds.
+- Cached startup checks manifest once; unchanged datasets are not fetched.
+- Fresh/corrupt cache uses one bootstrap. Complete history stays locally available.
+- Changed datasets load sequentially via dataset envelopes; only the loaded
+  dataset's revision is advanced. Changed library is deferred until Add Food or
+  Settings needs it, with cached results visible immediately.
+- The existing pendingWrites.v3 queue is preserved/migrated with stable client IDs.
+  Adds become immutable once sent; later edits/deletes are separate queued writes.
+  recordClientId and returned numeric IDs reconcile pending record identity.
+- The remote snapshot and acknowledgement receipts are saved atomically before
+  queued operations are removed. A crash/storage failure cannot silently erase
+  unacknowledged changes or replay acknowledged settings.
+- GETs retry once; POSTs are not blindly retried. Duplicate-protected queued
+  writes can be retried by reconnect/background sync with the same client IDs.
+- Network failures retain saved data and show a nonblocking sync warning.
+- Settings has Clear local cache (preserves pending changes), Force full refresh
+  and Copy sync/cache report. Request reports include full action URL (token
+  omitted), HTTP status, elapsed time, attempt/retry count and cache availability/use.
+- Version is Web · v2.16.
+- guidance.js has one additional guard: unsupported remote guidance is not
+  requested during initial rendering. All guidance messages and calculations stay
+  unchanged. This is necessary to avoid an extra request outside the startup plan.
 
-Official deployment instructions:
-https://developers.google.com/apps-script/concepts/deployments
+## Tests
 
-## Backend changes and API contract
+Run from the repository root:
 
-- Normal GETs never call ensureSchema or assign library IDs.
-- `manifest` reads only the fixed five dataset rows in sync_meta.
-- `bootstrap` returns settings, foods, library, entries (all history), weights, meta.
-  It is read-only and holds the script lock while pairing a snapshot with revisions.
-- `dataset&dataset=entries` (or settings/foods/library/weights) returns
-  `{ dataset, data, meta }`. It also holds the lock for a coherent snapshot.
-  Update only the revision for the dataset whose data was actually loaded.
-- Manifest fields: backendVersion, cacheSchemaVersion (1), spreadsheetId, serverTime,
-  revisions and updatedAt (objects keyed by settings/foods/library/entries/weights).
-- Existing settings/foods/library/entries/weights/export response shapes remain.
-  Records in the four collection datasets add clientId and updatedAt fields.
-- Adds accept optional `data.clientId` and return success, numeric id and clientId.
-  A repeated clientId returns the existing id with duplicate:true, without another row.
-  These technical columns apply to foods/library too, since their queued adds must
-  also be safe after a lost acknowledgement. Old clients may omit clientId.
-- All HTTP writes share one script lock. Batch avoids nested locks and checks schema
-  only for the datasets it touches. Entry saves do not scan the library.
-- Batch still accepts `{ operations: [{ type, data }] }`, case-insensitive types.
-  It returns success, processed, skippedMissing and an ordered results array.
-- An edit/delete may specify `data.recordClientId` to resolve a locally created
-  record whose numeric ID was lost with the add response. This is the original
-  record's clientId; the edit operation's own clientId is a different identifier.
-- Revisions are invalidated just before a mutation. A failure may advance a revision
-  without changing data; this intentionally causes a harmless refresh and prevents
-  partially applied batches from appearing unchanged.
-- Retried batch deletes of missing records keep the existing skippedMissing behavior.
-- Import/reset invalidate affected datasets; library is preserved.
-- No deployment URL, calorie math, visuals, history logic or guidance text changed.
+    node tests/backend-sync.test.cjs
+    node --experimental-vm-modules tests/frontend-sync.test.cjs
 
-## Validation completed
+8 backend + 15 frontend tests passed. Frontend tests execute the actual ES modules
+against the actual Code.gs through instrumented Apps Script mocks. They cover:
+single bootstrap; cached render before delayed network; unchanged manifest;
+offline restart and food/burn/weight queue; reconnect once; GET retry/report metadata;
+corrupt cache with existing queue; selective/lazy library reload; lost POST response;
+edit/delete during a save; crash before queue removal; cache quota failure;
+manual refresh; safe cache clearing; storage-disabled saves; invalid dataset response;
+partial batch retry; stale deleted record reconciliation. All module imports resolve.
 
-Run `node tests/backend-sync.test.cjs` from the repository root.
-Eight tests passed against the actual Code.gs in an instrumented Apps Script mock:
-legacy read compatibility, setup preservation, five-row manifest reads, read-only
-bootstrap/dataset snapshots, duplicate-safe retries for all four add datasets,
-partial batch retry, edit/delete via recordClientId, revision invalidation,
-library isolation on entry writes, import/reset and lock release on failure.
+Live bootstrap data was also validated. No fake food or weight records were inserted
+in the user's live spreadsheet for tests.
 
-These are simulated tests, not proof of a live Apps Script deployment or browser
-offline behavior. Deployment and all frontend acceptance tests remain outstanding.
-Legacy clients still do not send clientId, so duplicate protection becomes effective
-for their queued writes only after the new frontend is installed.
-Direct manual edits to Google Sheets do not increment app-write revisions; the
-planned Force full refresh must fetch bootstrap regardless of the manifest.
+A local Chromium install was attempted for UI QA, but its downloaded ZIP was
+invalid. Cloud-browser UI verification should check the deployed frontend instead.
+This checkpoint will be updated after that check when possible.
 
-## Continue after the deployed manifest reports 2.16
+## Files changed in the frontend phase
 
-The user authorized implementation of the supplied plan only. Do not ask for that
-authorization again. Do not release a frontend that calls new endpoints before the
-backend is deployed. Fetch current repository files and the current main commit
-before making further changes.
+js/api.js, js/cache.js (new), js/state.js, js/ui.js, js/settings.js,
+js/connection-reports.js, js/guidance.js (startup request guard only),
+tests/frontend-sync.test.cjs (new), tests/backend-mock.cjs (new), this handoff.
 
-Remaining files: js/api.js, js/state.js, new js/cache.js, js/ui.js, js/settings.js,
-js/connection-reports.js. Check js/app.js as a read-only dependency: it currently
-awaits initialise, so initialise must render cached data and return without waiting
-for network when cache is available.
+No HTML, CSS, calorie calculations, weekly summary calculations, history display,
+food button styling, guidance wording, deployment URL or spreadsheet user data was
+changed by the frontend implementation.
 
-Implement the remaining steps in the approved order:
+## Practical boundaries
 
-1. Validate/save a localStorage snapshot scoped to the configured backend.
-   Preserve pending queue `chrisfit.pendingWrites.v3`; corrupt/absent cache must not
-   discard pending writes. Render saved remote data with queue overlays immediately.
-2. One manifest call on cached startup; no parallel settings/foods/library/weights/
-   entries startup burst. Unchanged revisions produce no dataset requests.
-   Empty/corrupt cache uses one bootstrap. Changed datasets use envelope reads.
-3. Preserve loaded history/cache coverage and avoid marking unseen history loaded.
-   Bootstrap currently returns all entries. Manual full refresh uses bootstrap.
-4. Pending operations need stable client IDs and frozen in-flight payloads.
-   Persist server acknowledgements and merged data before removing queued operations.
-   A lost response must not duplicate an add or lose an edit made while saving.
-   Use returned ids/clientIds to reconcile local record identity, without reloading
-   every dataset after each save. Keep edits made during sync queued separately.
-5. Lazy remote library refresh: render cached library at once; defer its changed
-   revision fetch until Add Food/Search actually needs it. Do not mark an unfetched
-   library revision as cached. Preserve existing dialog behavior.
-6. Bounded GET retry; do not blindly retry unprotected POSTs. Keep usable cache and
-   pending writes on network/storage failures; make sync warnings informative.
-7. Show Web · v2.16 and add Clear local cache, Copy sync/cache report and Force full
-   refresh to Settings. Cache clearing must not silently delete unsynced changes.
-8. Reports identify actual action, full request URL, HTTP status, elapsed time,
-   attempt/retry count and cache presence/use.
+- The first successful bootstrap establishes the data cache on each device/browser.
+  Cache is stored locally and validated against the configured backend URL.
+- The pending queue is stored separately so corrupting/clearing the data snapshot
+  does not erase unsynced changes. Invalid pending queue JSON is preserved and
+  reported; it is not silently replaced.
+- Tests simulate offline Google sync after loading the frontend assets. This scoped
+  plan does not add a service worker to guarantee loading the website shell without
+  any network/browser HTTP cache.
+- Manual sheet edits do not increment app-write revisions. Use Force full refresh
+  after directly editing the spreadsheet.
+- Library is included in a first bootstrap (as required by the plan) and cached;
+  subsequent changed-library retrieval is lazy.
+- Legacy already-saved rows without clientId cannot retroactively identify an old
+  v2.15 write whose reply was lost. All newly queued v2.16 adds send clientId.
+- Import/reset never automatically retry destructive POSTs and require pending
+  writes to be saved/discarded first.
 
-Acceptance tests from the plan still required: immediate cached startup; single
-bootstrap without cache; offline restart; bad backend URL with usable cache;
-offline food/burn/weight additions; reconnect sends each item once; lost-response
-retry; full refresh; history navigation; settings revision/cache update; lazy library
-refresh. Also verify in-flight add/edit/delete and partial-save/reload races.
+## If continuing in a new chat
 
-Do not change layout, calculations, weekly summaries, history display, food styles,
-guidance wording, user sheet values or deployment URL beyond the planned technical
-sync columns/meta sheet.
-
-## Paste into a new chat
-
-Continue the approved ChrisFit v2.16 local-first plan in
-https://github.com/cinaedvsstudios/chrisfit.
+Continue work in https://github.com/cinaedvsstudios/chrisfit.
 Read docs/V2_16_HANDOFF.md and docs/V2_16_LOCAL_FIRST_PLAN.md first.
-The backend phase is committed; the frontend is still v2.15 and has not been changed.
-Verify whether I have deployed the new Code.gs and whether action=manifest returns
-backendVersion 2.16 before releasing frontend changes. Follow the plan only.
-I already authorized implementation. If a quota limit approaches, commit a clean
-checkpoint and update the handoff so another chat can continue without guessing.
+The backend is already deployed and initialized at v2.16. The frontend phase is
+implemented and has 15 passing tests, plus 8 backend tests. Fetch current main and
+check whether the frontend commit is published and the app displays Web · v2.16.
+Finish outstanding browser UI verification if needed. Follow only the approved
+plan. Do not redeploy Apps Script again unless Code.gs changes. Preserve pending
+local writes, user sheet values, layout, calculations, history and guidance wording.

@@ -454,6 +454,33 @@ export function renderSettings() {
   backup.append(exportButton, importButton, reset);
   content.appendChild(backup);
 
+  const local = panel('💾 Saved Data & Sync');
+  const localInfo = api.getConnectionInfo();
+  const cacheStatus = document.createElement('p');
+  cacheStatus.className = 'settings-note';
+  cacheStatus.textContent = 'Saved data: ' + localInfo.cacheStatus + ' · Last successful sync: ' +
+    (localInfo.lastSuccessfulSync ? new Date(localInfo.lastSuccessfulSync).toLocaleString() : 'not yet') +
+    ' · Unsynced changes: ' + localInfo.pendingChanges;
+  const cacheActions = document.createElement('div');
+  cacheActions.className = 'diagnostic-actions';
+  const fullRefresh = button('🔄 Force full refresh', 'btn-outline');
+  fullRefresh.addEventListener('click', async () => {
+    fullRefresh.disabled = true;
+    try {
+      if (await api.forceFullRefresh()) showToast('Google data refreshed; pending changes kept', 'success');
+    } finally { fullRefresh.disabled = false; }
+  });
+  const clearCache = button('🧹 Clear local cache', 'btn-outline');
+  clearCache.addEventListener('click', () => {
+    if (!confirm('Clear saved Google data on this device? Unsynced changes will be kept.')) return;
+    try { api.clearLocalCache(); } catch (error) { showToast(error.message, 'error'); }
+  });
+  const copySync = button('📋 Copy sync/cache report', 'btn-outline');
+  copySync.addEventListener('click', () => copyText_(api.getSyncCacheReport(), 'Sync/cache report copied'));
+  cacheActions.append(fullRefresh, clearCache, copySync);
+  local.append(cacheStatus, cacheActions);
+  content.appendChild(local);
+
   const debug = panel('🛠️ Connection Debug');
   debug.classList.add('diagnostic-panel');
   const info = api.getConnectionInfo();
@@ -499,16 +526,20 @@ export function renderSettings() {
     const fallbackReport = reports.getConnectionReports()[0];
     await copyText_(output.value || reports.formatConnectionReport(fallbackReport), 'Debug report copied');
   });
-  discard.addEventListener('click', () => api.discardPendingChanges());
+  discard.addEventListener('click', () => {
+    if (!confirm('Discard unsynced local changes?')) return;
+    try { api.discardPendingChanges(); } catch (error) { showToast(error.message, 'error'); }
+  });
   actions.append(run, copy, discard);
   debug.append(status, endpoint, actions, output, reportIntro, reportMount);
   content.appendChild(debug);
 
   const notes = panel('ℹ️ Release Notes');
   notes.classList.add('release-notes');
-  notes.innerHTML += `<p><strong>ChrisFit Web · v2.15</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Connection Debug now shows one selected-date error report card instead of one visible card per error.</li><li>Copy selected day copies all connection errors for that date as one combined report with dividers.</li><li>Local connection reports are still kept only on this device for the most recent 5 error days.</li></ul>`;
+  notes.innerHTML += `<p><strong>ChrisFit Web · v2.16</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Opens saved data immediately and checks Google revisions in the background.</li><li>Pending changes have stable IDs for safe retries.</li><li>Saved data and sync reports can be managed above.</li></ul>`;
   content.appendChild(notes);
 
   container.appendChild(content);
   return container;
 }
+

@@ -4,7 +4,7 @@ import { state } from './state.js';
 const REPORTS_KEY = 'chrisfit.connectionReports.v1';
 const MAX_REPORT_DAYS = 5;
 const MAX_REPORTS = 50;
-export const CONNECTION_REPORT_APP_VERSION = 'Web · v2.15';
+export const CONNECTION_REPORT_APP_VERSION = 'Web · v2.16';
 
 function toLocalIsoDate_(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value);
@@ -23,7 +23,7 @@ function readReports_() {
   }
 }
 function writeReports_(reports) {
-  localStorage.setItem(REPORTS_KEY, JSON.stringify(pruneReports_(reports)));
+  try { localStorage.setItem(REPORTS_KEY, JSON.stringify(pruneReports_(reports))); } catch (_) { /* Keep rendering if storage is full/disabled. */ }
 }
 function pruneReports_(reports) {
   const clean = (Array.isArray(reports) ? reports : [])
@@ -89,7 +89,7 @@ export function clearConnectionReportsForDate(day) {
 export function clearAllConnectionReports() {
   localStorage.removeItem(REPORTS_KEY);
 }
-export function recordConnectionReport({ source = 'connection', label = '', action = '', method = '', url = '', elapsedMs = null, error = null, info = null, extra = null } = {}) {
+export function recordConnectionReport({ source = 'connection', label = '', action = '', method = '', url = '', elapsedMs = null, httpStatus = null, attempt = null, maxAttempts = null, retryCount = null, cacheAvailable = null, usingCachedData = null, error = null, info = null, extra = null } = {}) {
   const now = new Date();
   const report = {
     id: `${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -102,7 +102,13 @@ export function recordConnectionReport({ source = 'connection', label = '', acti
     action,
     method,
     url: sanitiseUrl_(url || info?.endpoint),
-    elapsedMs: Number.isFinite(Number(elapsedMs)) ? Math.round(Number(elapsedMs)) : null,
+    elapsedMs: elapsedMs !== null && Number.isFinite(Number(elapsedMs)) ? Math.round(Number(elapsedMs)) : null,
+    httpStatus,
+    attempt,
+    maxAttempts,
+    retryCount,
+    cacheAvailable: cacheAvailable ?? info?.cacheAvailable ?? false,
+    usingCachedData: usingCachedData ?? info?.usingCachedData ?? false,
     errorName: safeErrorName_(error),
     message: safeErrorMessage_(error),
     stack: safeErrorStack_(error),
@@ -130,6 +136,11 @@ export function formatConnectionReport(report) {
     `Action: ${report.action || '(unknown)'}`,
     `Method: ${report.method || '(unknown)'}`,
     `URL: ${report.url || '(unknown)'}`,
+    'HTTP status: ' + (report.httpStatus ?? '(no response)'),
+    'Attempt: ' + (report.attempt ?? '(unknown)') + ' of ' + (report.maxAttempts ?? '(unknown)'),
+    'Retry count: ' + (report.retryCount ?? '(unknown)'),
+    'Cache available: ' + (report.cacheAvailable ? 'yes' : 'no'),
+    'Using cached data: ' + (report.usingCachedData ? 'yes' : 'no'),
     `Elapsed: ${report.elapsedMs === null || report.elapsedMs === undefined ? '(unknown)' : `${report.elapsedMs} ms`}`,
     `Error: ${report.errorName || 'Error'} — ${report.message || '(none)'}`,
     `Selected date: ${report.selectedDate || '(unknown)'}`,
@@ -144,3 +155,4 @@ export function formatConnectionReport(report) {
   if (report.stack) lines.push('', 'Stack:', report.stack);
   return lines.join('\n');
 }
+

@@ -53,7 +53,7 @@ function normaliseRemoteGuidance(item, index = 0) {
   };
 }
 function requestRemoteGuidance() {
-  if (guidanceRequested || !CONFIG.baseUrl) return;
+  if (guidanceRequested || !CONFIG.baseUrl || !state.backendManifest?.revisions?.guidance) return;
   guidanceRequested = true;
   const url = new URL(CONFIG.baseUrl);
   url.searchParams.set('action', 'guidance');

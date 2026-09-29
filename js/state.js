@@ -30,6 +30,11 @@ export const state = {
   guidance: [],
   weights: [],
   settings: { ...defaultSettings },
+  cacheStatus: 'empty',
+  syncStatus: 'idle',
+  lastSuccessfulSync: null,
+  backendManifest: null,
+  pendingChanges: [],
   sync: { phase: 'idle', pending: 0, message: '' },
   toast: null,
   listeners: new Set()

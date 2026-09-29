@@ -147,8 +147,10 @@ export function render() {
   const app = document.getElementById('app'); if (!app) return; app.innerHTML = '';
   const active = getActiveScreen();
   const enteringHistory = active === 'history' && lastRenderedScreen !== 'history';
+  const enteringSettings = active === 'settings' && lastRenderedScreen !== 'settings';
   app.appendChild(active === 'settings' ? renderSettings() : active === 'history' ? renderHistory(enteringHistory) : renderMain());
   lastRenderedScreen = active;
+  if (enteringSettings) queueMicrotask(() => api.ensureLibrary());
   if (state.sync.message && !['idle','saved'].includes(state.sync.phase)) { const status = document.createElement('div'); status.className = `sync-status sync-${state.sync.phase}`; status.textContent = state.sync.message; app.appendChild(status); }
   if (state.toast) { const toast = document.createElement('div'); toast.className = `toast toast-${state.toast.type}`; toast.textContent = state.toast.message; app.appendChild(toast); }
 }
@@ -158,7 +160,7 @@ export function renderMain() {
 
   const hero = document.createElement('section'); hero.className = 'card hero-card compact-hero-card';
   const left = document.createElement('div'); left.className = 'compact-hero-left';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.15</div></div>');
+  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.16</div></div>');
   left.append(title, button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day'));
 
   const selectedIso = dateUtils.toIso(state.selectedDate);
@@ -212,7 +214,13 @@ export function renderMain() {
   const quick = document.createElement('section'); quick.className = 'card';
   quick.innerHTML = `<div class="card-heading"><div><h2>Quick Add</h2><p>Tap saved items repeatedly to log multiple units.</p></div></div>`;
   const actions = document.createElement('div'); actions.className = 'primary-actions';
-  actions.append(button(`${e().emojiFood} Add Food`, 'btn-blue', () => showEntryDialog('food')), button(`${e().emojiBurn} Add Burn`, 'btn-red', () => showEntryDialog('burn')), button(`${e().emojiBmr} BMR`, 'btn-green', () => api.addEntry(state.selectedDate, 'BMR', -Math.abs(e().bmr))), button(`${e().emojiHistory} History`, 'btn-outline', () => navigate('history')));
+  actions.append(button(`${e().emojiFood} Add Food`, 'btn-blue', () => {
+    showEntryDialog('food');
+    api.ensureLibrary().then(() => {
+      const search = document.querySelector('.modal input[type="search"]');
+      if (search) search.dispatchEvent(new Event('input'));
+    });
+  }), button(`${e().emojiBurn} Add Burn`, 'btn-red', () => showEntryDialog('burn')), button(`${e().emojiBmr} BMR`, 'btn-green', () => api.addEntry(state.selectedDate, 'BMR', -Math.abs(e().bmr))), button(`${e().emojiHistory} History`, 'btn-outline', () => navigate('history')));
   const foods = document.createElement('div'); foods.className = 'food-grid';
   const activeFoods = state.foods.filter(food => food.active);
   if (!activeFoods.length) foods.innerHTML = '<p class="empty-state">No visible saved food buttons. Manage them in Settings.</p>';

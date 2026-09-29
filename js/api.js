@@ -1,118 +1,113 @@
-/*
-  ChrisFit Google Sheets access with optimistic background sync.
-  v2.15 adds local connection error reports in Settings.
-  v2.14 added:
-  - range-based entry loading so startup only pulls the recent active window;
-  - Save Now and smarter reconnect actions;
-  - stale update/delete recovery when Google reports a missing record.
-*/
+/* ChrisFit v2.16: cache-first startup and serialized, duplicate-safe sync. */
 import { CONFIG } from './config.js';
-import { state, defaultSettings, setState, setSync, showToast } from './state.js';
-import { recordConnectionReport } from './connection-reports.js';
+import { state, defaultSettings, notify, setState, setSync, showToast } from './state.js';
+import { recordConnectionReport, formatConnectionReport } from './connection-reports.js';
+import * as cache from './cache.js';
 
 const QUEUE_KEY = 'chrisfit.pendingWrites.v3';
 const FETCH_TIMEOUT_MS = 15000;
-const INITIAL_ENTRY_WINDOW_DAYS = 30;
-const ENTRY_RANGE_BEFORE_DAYS = 45;
-const ENTRY_RANGE_AFTER_DAYS = 45;
+const DATASETS = ['settings', 'foods', 'library', 'entries', 'weights'];
+const TYPES = {
+  entries: 'entries', updateEntry: 'entries', deleteEntry: 'entries',
+  foods: 'foods', updateFood: 'foods', deleteFood: 'foods',
+  library: 'library', updateLibrary: 'library', deleteLibrary: 'library',
+  weights: 'weights', updateWeight: 'weights', deleteWeight: 'weights', settings: 'settings'
+};
 const mem = { nextId: 1, entries: [], foods: [], library: [], weights: [], settings: { ...defaultSettings } };
 const remote = { entries: [], foods: [], library: [], weights: [], settings: { ...defaultSettings } };
-let pending = readQueue_();
-let flushing = false;
-let flushTimer = null;
-let reconnecting = false;
-let savingNow = false;
-let entriesLoading = null;
-let loadedEntryRanges = [];
+let pending = [], acknowledged = new Set(), manifest = null;
+let entriesComplete = false, cacheAvailable = false, usingCachedData = false, libraryNeeded = false;
+let lastSuccessfulSync = null, storageError = '', queueError = '';
+let flushing = false, savingNow = false, destructiveBusy = false;
+let flushTimer = null, retryTimer = null, retryDelay = 15000;
+let backgroundTask = null, libraryTask = null, networkTail = Promise.resolve();
 
 export function isDemoMode() { return !CONFIG.baseUrl; }
 function clone_(value) { return JSON.parse(JSON.stringify(value)); }
-function readQueue_() { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch (_) { return []; } }
-function saveQueue_() { localStorage.setItem(QUEUE_KEY, JSON.stringify(pending)); }
-function tempId_() { return `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
+function tempId_() { return 'local_' + Date.now() + '_' + (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)); }
 function generateId_() { return mem.nextId++; }
 function toISODate_(date) {
   if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
   const d = date instanceof Date ? date : new Date(date);
   const pad = value => String(value).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-function dateFromIso_(iso) {
-  const [year, month, day] = toISODate_(iso).split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
-function addDaysIso_(iso, days) {
-  const date = dateFromIso_(iso);
-  date.setDate(date.getDate() + days);
-  return toISODate_(date);
-}
-function initialEntryRange_() {
-  const today = toISODate_(new Date());
-  return { from: addDaysIso_(today, -INITIAL_ENTRY_WINDOW_DAYS), to: today };
-}
-function rangeForDate_(date) {
-  const iso = toISODate_(date);
-  return { from: addDaysIso_(iso, -ENTRY_RANGE_BEFORE_DAYS), to: addDaysIso_(iso, ENTRY_RANGE_AFTER_DAYS) };
-}
-function normaliseRange_(from, to) {
-  let start = toISODate_(from);
-  let end = toISODate_(to);
-  if (start > end) [start, end] = [end, start];
-  return { from: start, to: end };
-}
-function rangeCovers_(date) {
-  const iso = toISODate_(date);
-  return loadedEntryRanges.some(range => range.from <= iso && iso <= range.to);
-}
-function activeEntryRange_() {
-  const selected = toISODate_(state.selectedDate);
-  return loadedEntryRanges.find(range => range.from <= selected && selected <= range.to) || rangeForDate_(selected);
-}
-function addLoadedRange_(from, to) {
-  const next = normaliseRange_(from, to);
-  loadedEntryRanges.push(next);
-  loadedEntryRanges = loadedEntryRanges
-    .sort((a, b) => a.from.localeCompare(b.from))
-    .reduce((merged, range) => {
-      const last = merged[merged.length - 1];
-      if (!last || addDaysIso_(last.to, 1) < range.from) {
-        merged.push({ ...range });
-      } else if (range.to > last.to) {
-        last.to = range.to;
-      }
-      return merged;
-    }, []);
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 function normaliseSettings_(settings = {}) { return { ...defaultSettings, ...(settings || {}), id: 1 }; }
 function normaliseFood_(food, index = 0) {
-  return {
-    ...food,
-    id: food.id,
-    name: String(food.name || '').trim(),
-    calories: Number(food.calories),
+  return { ...food, id: food.id, name: String(food.name || '').trim(), calories: Number(food.calories),
     sortOrder: Number.isFinite(Number(food.sortOrder)) ? Number(food.sortOrder) : index + 1,
     active: food.active === false || String(food.active).toLowerCase() === 'false' ? false : true,
-    emoji: String(food.emoji || '').trim()
-  };
+    emoji: String(food.emoji || '').trim() };
 }
 function normaliseLibrary_(item, index = 0) {
-  return {
-    ...item,
-    id: item.id ?? index + 1,
-    name: String(item.name || '').trim(),
-    amount: String(item.amount || '').trim(),
-    calories: Number(item.calories),
-    emoji: String(item.emoji || '').trim()
-  };
+  return { ...item, id: item.id ?? index + 1, name: String(item.name || '').trim(),
+    amount: String(item.amount || '').trim(), calories: Number(item.calories), emoji: String(item.emoji || '').trim() };
 }
 function normaliseEntry_(entry) {
-  return {
-    ...entry,
-    id: entry.id,
-    date: toISODate_(entry.date),
-    name: String(entry.name || '').trim(),
-    calories: Number(entry.calories)
-  };
+  return { ...entry, id: entry.id, date: toISODate_(entry.date), name: String(entry.name || '').trim(), calories: Number(entry.calories) };
+}
+function normaliseDataset_(name, data) {
+  if (name === 'settings') return normaliseSettings_(data);
+  if (name === 'foods') return data.map(normaliseFood_);
+  if (name === 'library') return data.map(normaliseLibrary_);
+  if (name === 'entries') return data.map(normaliseEntry_);
+  return clone_(data);
+}
+function serial_(work) {
+  const task = networkTail.then(work);
+  networkTail = task.catch(() => {});
+  return task;
+}
+function readQueue_() {
+  try {
+    const value = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+    if (!Array.isArray(value) || !value.every(op => op && TYPES[op.type] && op.data && typeof op.data === 'object')) {
+      throw new Error('Pending queue is invalid; it has been preserved for recovery.');
+    }
+    return value.map(op => {
+      const queueId = String(op.queueId || tempId_());
+      return { ...op, queueId, data: { ...op.data, clientId: String(op.data.clientId || queueId) }, sent: Boolean(op.sent) };
+    });
+  } catch (error) { queueError = String(error.message || error); return []; }
+}
+function saveQueue_(value = pending) {
+  if (queueError) throw new Error(queueError);
+  try { localStorage.setItem(QUEUE_KEY, JSON.stringify(value)); }
+  catch (error) { throw new Error('Local changes could not be saved on this device: ' + (error.message || error)); }
+}
+function effectivePending_() { return pending.filter(op => !acknowledged.has(op.queueId)); }
+function persistSnapshot_(strict = false) {
+  if (!entriesComplete || !manifest) return false;
+  try {
+    cache.saveCache({
+      data: clone_(remote), meta: clone_(manifest), entriesComplete: true,
+      guidance: clone_(state.guidance || []), lastSuccessfulSync,
+      // Retain receipts only while a stale queue may still contain these operations.
+      acknowledged: [...acknowledged]
+    });
+    cacheAvailable = true; storageError = ''; state.cacheStatus = 'saved';
+    return true;
+  } catch (error) {
+    storageError = String(error.message || error); state.cacheStatus = 'unavailable';
+    if (strict) throw error;
+    return false;
+  }
+}
+function hydrate_() {
+  pending = readQueue_();
+  const loaded = cache.loadCache();
+  state.cacheStatus = loaded.status;
+  if (loaded.cache) {
+    const saved = loaded.cache;
+    DATASETS.forEach(name => { remote[name] = normaliseDataset_(name, saved.data[name]); });
+    manifest = saved.meta; entriesComplete = true; cacheAvailable = true; usingCachedData = true;
+    lastSuccessfulSync = saved.lastSuccessfulSync || null;
+    state.guidance = Array.isArray(saved.guidance) ? saved.guidance : [];
+    acknowledged = new Set(saved.acknowledged);
+    pending = effectivePending_();
+  }
+  if (loaded.error) storageError = loaded.error;
+  try { saveQueue_(); acknowledged.clear(); } catch (error) { storageError = String(error.message || error); }
 }
 function endpoint_(action, params = {}) {
   const url = new URL(CONFIG.baseUrl);
@@ -123,350 +118,347 @@ function endpoint_(action, params = {}) {
   });
   return url.toString();
 }
-function assertApiResponse_(data) {
-  if (data && data.success === false) throw new Error(data.error || 'Backend request failed');
-  return data;
-}
-async function fetchWithTimeout_(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (error) {
-    if (error?.name === 'AbortError') throw new Error(`Backend timed out after ${Math.round(timeoutMs / 1000)}s`);
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-async function get_(action, params = {}) {
-  if (isDemoMode()) return undefined;
-  const response = await fetchWithTimeout_(endpoint_(action, params));
-  if (!response.ok) throw new Error(`Backend HTTP error ${response.status}`);
-  return assertApiResponse_(await response.json());
-}
-async function post_(action, body = {}) {
-  if (isDemoMode()) return undefined;
-  const response = await fetchWithTimeout_(endpoint_(action), {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(body)
-  });
-  if (!response.ok) throw new Error(`Backend HTTP error ${response.status}`);
-  return assertApiResponse_(await response.json());
-}
-function isEntryOnlyOperation_(operation) {
-  return ['entries', 'updateEntry', 'deleteEntry'].includes(operation.type);
-}
-function isStaleRecordOperation_(operation) {
-  return /^update/i.test(operation.type) || /^delete/i.test(operation.type);
-}
-function isRecordNotFoundError_(error) {
-  return /record not found/i.test(String(error?.message || error || ''));
-}
 function recordError_(source, label, action, error, extra = {}) {
   try {
-    recordConnectionReport({ source, label, action, error, info: getConnectionInfo(), ...extra });
-  } catch (reportError) {
-    console.warn('Could not save connection error report:', reportError);
+    recordConnectionReport({ source, label, action, error, info: getConnectionInfo(), ...extra, ...error?.request });
+  } catch (_) { /* Storage failures must not prevent rendering. */ }
+}
+async function request_(action, params = {}, body) {
+  const method = body === undefined ? 'GET' : 'POST', maxAttempts = method === 'GET' ? 2 : 1;
+  const url = endpoint_(action, params);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const started = performance.now(), controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let httpStatus = null;
+    try {
+      if (navigator.onLine === false) throw new Error('Device is offline');
+      const response = await fetch(url, {
+        method, signal: controller.signal, cache: 'no-store',
+        ...(body === undefined ? {} : { headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
+      });
+      httpStatus = response.status;
+      if (!response.ok) throw new Error('Backend HTTP error ' + httpStatus);
+      const data = await response.json();
+      if (!data || data.success === false) throw new Error(data?.error || 'Backend returned an empty response');
+      if (method === 'GET') {
+        if (action === 'manifest' && !cache.validateManifest(data)) throw new Error('Invalid v2.16 manifest response');
+        if (action === 'bootstrap' && (!cache.validateManifest(data.meta) ||
+          !DATASETS.every(name => cache.validateDataset(name, data[name])))) throw new Error('Invalid bootstrap response');
+        if (action === 'dataset' && (data.dataset !== params.dataset || !cache.validateManifest(data.meta) ||
+          !cache.validateDataset(params.dataset, data.data))) throw new Error('Invalid dataset response');
+      }
+      return data;
+    } catch (cause) {
+      const error = new Error(cause?.name === 'AbortError' ? 'Backend timed out after 15s' : String(cause?.message || cause));
+      error.request = { action, method, url, httpStatus, elapsedMs: Math.round(performance.now() - started),
+        attempt, maxAttempts, retryCount: attempt - 1, cacheAvailable, usingCachedData };
+      if (attempt === maxAttempts || navigator.onLine === false) {
+        recordError_('request', 'Request ' + action, action, error);
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 600));
+    } finally { clearTimeout(timer); }
   }
 }
-
-function findOperationForPendingAdd_(type, id) {
-  return pending.find(operation => operation.type === type && String(operation.tempId) === String(id));
+async function get_(action, params = {}) { return request_(action, params); }
+async function post_(action, body = {}) { return request_(action, {}, body); }
+function identityMatches_(item, data) {
+  return String(item.id) === String(data.id) || Boolean(data.recordClientId && item.clientId === data.recordClientId);
 }
 function applyOperations_(source, addType, updateType, deleteType) {
   let result = clone_(source || []);
-  pending.forEach(operation => {
-    if (operation.type === addType) result.unshift({ ...operation.data, id: operation.tempId, _pending: true });
-    if (operation.type === updateType) {
-      const index = result.findIndex(record => String(record.id) === String(operation.data.id));
-      if (index >= 0) result[index] = { ...result[index], ...operation.data, _pending: true };
+  effectivePending_().forEach(op => {
+    if (op.type === addType) {
+      const existing = result.find(item => item.clientId && item.clientId === op.data.clientId);
+      if (existing) existing._pending = true;
+      else result.unshift({ ...op.data, id: op.tempId, _pending: true });
     }
-    if (operation.type === deleteType) {
-      result = result.filter(record => String(record.id) !== String(operation.data.id));
+    if (op.type === updateType) {
+      const index = result.findIndex(item => identityMatches_(item, op.data));
+      if (index >= 0) result[index] = { ...result[index], ...op.data, id: result[index].id, clientId: result[index].clientId, _pending: true };
     }
+    if (op.type === deleteType) result = result.filter(item => !identityMatches_(item, op.data));
   });
   return result;
 }
 function effectiveSettings_() {
-  let settings = normaliseSettings_(remote.settings || mem.settings);
-  pending.filter(operation => operation.type === 'settings')
-    .forEach(operation => { settings = normaliseSettings_({ ...settings, ...operation.data }); });
+  let settings = normaliseSettings_(remote.settings);
+  effectivePending_().filter(op => op.type === 'settings').forEach(op => { settings = normaliseSettings_({ ...settings, ...op.data }); });
   return settings;
 }
 function renderEffective_() {
-  const entriesFull = applyOperations_(remote.entries, 'entries', 'updateEntry', 'deleteEntry')
-    .map(normaliseEntry_)
+  const entriesFull = applyOperations_(remote.entries, 'entries', 'updateEntry', 'deleteEntry').map(normaliseEntry_)
     .sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
-  const selected = toISODate_(state.selectedDate);
-  const foods = applyOperations_(remote.foods, 'foods', 'updateFood', 'deleteFood')
-    .map(normaliseFood_)
-    .sort((a, b) => a.sortOrder - b.sortOrder || Number(a.id) - Number(b.id));
-  const library = applyOperations_(remote.library, 'library', 'updateLibrary', 'deleteLibrary')
-    .map(normaliseLibrary_)
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const weights = applyOperations_(remote.weights, 'weights', 'updateWeight', 'deleteWeight')
-    .sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
-
-  setState('entriesFull', entriesFull);
-  setState('entries', entriesFull.filter(entry => entry.date === selected));
-  setState('foods', foods);
-  setState('library', library);
-  setState('weights', weights);
-  setState('settings', effectiveSettings_());
-  if (pending.length && !flushing && !reconnecting && !savingNow) {
-    setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
-  }
+  Object.assign(state, {
+    entriesFull, entries: entriesFull.filter(entry => entry.date === toISODate_(state.selectedDate)),
+    foods: applyOperations_(remote.foods, 'foods', 'updateFood', 'deleteFood').map(normaliseFood_)
+      .sort((a, b) => a.sortOrder - b.sortOrder || Number(a.id) - Number(b.id)),
+    library: applyOperations_(remote.library, 'library', 'updateLibrary', 'deleteLibrary').map(normaliseLibrary_)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    weights: applyOperations_(remote.weights, 'weights', 'updateWeight', 'deleteWeight')
+      .sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id))),
+    settings: effectiveSettings_(), backendManifest: manifest, lastSuccessfulSync, pendingChanges: clone_(effectivePending_())
+  });
+  notify();
 }
-function enqueue_(operation) {
-  pending.push({ ...operation, queueId: tempId_() });
-  saveQueue_();
+function setStatus_(phase, message) { state.syncStatus = phase; setSync(phase, effectivePending_().length, message); }
+function savedStatus_() {
+  if (storageError || queueError) return setStatus_('pending', 'Data is available here, but local saving failed. Copy a sync/cache report in Settings.');
+  const count = effectivePending_().length;
+  setStatus_(count ? 'pending' : 'saved', count ? count + ' changes waiting to sync' : 'Connected');
+}
+function failedStatus_() {
   renderEffective_();
-  if (!isDemoMode()) {
-    setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
-    showToast('Saved locally — syncing', 'info', 1400);
-    scheduleFlush_();
-  }
+  setStatus_(cacheAvailable || effectivePending_().length ? 'pending' : 'error',
+    cacheAvailable ? 'Using saved data. Google sync failed; retrying in background.'
+      : effectivePending_().length ? 'Local changes kept. Google sync failed; retrying in background.'
+      : 'No saved data available. Google could not load; retrying in background.');
+  scheduleBackgroundRetry_();
+}
+function scheduleBackgroundRetry_() {
+  if (retryTimer) return;
+  retryTimer = setTimeout(() => { retryTimer = null; backgroundSync(); }, retryDelay);
+  retryDelay = Math.min(retryDelay * 2, 60000);
 }
 function scheduleFlush_(delay = 650) {
   if (isDemoMode()) return;
   if (flushTimer) clearTimeout(flushTimer);
-  flushTimer = setTimeout(() => flushPending(), delay);
+  flushTimer = setTimeout(() => { flushTimer = null; flushPending(); }, delay);
+}
+function enqueue_(operation) {
+  if (destructiveBusy) throw new Error('Wait until the import/reset has finished before adding changes.');
+  const queueId = tempId_(), data = { ...operation.data, clientId: queueId };
+  if (/^(update|delete)/.test(operation.type)) {
+    const name = TYPES[operation.type];
+    const item = state[name === 'entries' ? 'entriesFull' : name]?.find(item => String(item.id) === String(data.id));
+    const add = pending.find(op => op.type === name && String(op.tempId) === String(data.id));
+    const recordClientId = item?.clientId || add?.data.clientId;
+    if (recordClientId) data.recordClientId = recordClientId;
+  }
+  const next = [...pending, { ...operation, data, queueId, sent: false }];
+  saveQueue_(next);
+  pending = next; renderEffective_();
+  setStatus_('pending', effectivePending_().length + ' changes waiting to sync');
+  showToast('Saved locally — syncing', 'info', 1400); scheduleFlush_();
+}
+function findOperationForPendingAdd_(type, id) {
+  return pending.find(op => !acknowledged.has(op.queueId) && op.type === type && String(op.tempId) === String(id));
 }
 function cancelUnsentAdd_(id, addType) {
-  const before = pending.length;
-  pending = pending.filter(operation => !(operation.type === addType && String(operation.tempId) === String(id)));
-  if (pending.length !== before) {
-    saveQueue_();
-    renderEffective_();
-    showToast('Removed before syncing', 'info');
-    return true;
-  }
-  return false;
-}
-function updateUnsentAdd_(id, addType, data) {
-  const operation = findOperationForPendingAdd_(addType, id);
-  if (!operation) return false;
-  operation.data = { ...operation.data, ...data };
-  saveQueue_();
-  renderEffective_();
-  scheduleFlush_();
+  const add = findOperationForPendingAdd_(addType, id);
+  if (!add || add.sent) return false;
+  const next = pending.filter(op => op.queueId !== add.queueId);
+  saveQueue_(next); pending = next; renderEffective_(); savedStatus_();
   return true;
 }
-
-async function loadBaseData_() {
-  if (isDemoMode()) {
-    remote.foods = clone_(mem.foods);
-    remote.library = clone_(mem.library);
-    remote.weights = clone_(mem.weights);
-    remote.settings = normaliseSettings_(mem.settings);
-    return;
+function updateUnsentAdd_(id, addType, data) {
+  const add = findOperationForPendingAdd_(addType, id);
+  if (!add || add.sent) return false;
+  const next = pending.map(op => op.queueId === add.queueId
+    ? { ...op, data: { ...op.data, ...data, clientId: op.data.clientId } } : op);
+  saveQueue_(next); pending = next; renderEffective_(); scheduleFlush_();
+  return true;
+}
+function acceptManifest_(value) {
+  if (!cache.validateManifest(value)) throw new Error('Backend sync response is invalid or is not v2.16.');
+  if (manifest && value.spreadsheetId !== manifest.spreadsheetId) throw new Error('Backend spreadsheet changed; sync stopped to preserve local changes.');
+  return value;
+}
+async function bootstrap_() {
+  const snapshot = await get_('bootstrap'), meta = acceptManifest_(snapshot.meta);
+  if (!DATASETS.every(name => cache.validateDataset(name, snapshot[name]))) throw new Error('Backend bootstrap data is invalid. Saved data has been kept.');
+  DATASETS.forEach(name => { remote[name] = normaliseDataset_(name, snapshot[name]); });
+  manifest = clone_(meta); entriesComplete = true; usingCachedData = false;
+  lastSuccessfulSync = new Date().toISOString(); persistSnapshot_(); renderEffective_();
+}
+async function loadDataset_(name) {
+  const response = await get_('dataset', { dataset: name }), meta = acceptManifest_(response.meta);
+  if (response.dataset !== name || !cache.validateDataset(name, response.data)) throw new Error('Backend ' + name + ' data is invalid. Saved data has been kept.');
+  remote[name] = normaliseDataset_(name, response.data);
+  // Update only the revision belonging to data actually received.
+  manifest.revisions[name] = meta.revisions[name];
+  manifest.updatedAt = { ...manifest.updatedAt, [name]: meta.updatedAt?.[name] || '' };
+  manifest.serverTime = meta.serverTime; lastSuccessfulSync = new Date().toISOString(); usingCachedData = false;
+  persistSnapshot_(); renderEffective_();
+}
+async function checkChanges_() {
+  if (!entriesComplete || !manifest) return bootstrap_();
+  const latest = acceptManifest_(await get_('manifest'));
+  for (const name of DATASETS) {
+    if (name === 'library' && !libraryNeeded) continue;
+    if (manifest.revisions[name] !== latest.revisions[name]) await loadDataset_(name);
   }
-  const [settings, foods, library, weights] = await Promise.all([
-    get_('settings'), get_('foods'), get_('library'), get_('weights')
-  ]);
-  remote.settings = normaliseSettings_(settings);
-  remote.foods = (foods || []).map(normaliseFood_);
-  remote.library = (library || []).map(normaliseLibrary_);
-  remote.weights = weights || [];
+  lastSuccessfulSync = new Date().toISOString(); persistSnapshot_(); renderEffective_();
 }
-async function loadEntriesRange_(from, to) {
-  const range = normaliseRange_(from, to);
-  if (isDemoMode()) {
-    remote.entries = clone_(mem.entries);
-    loadedEntryRanges = [range];
-    return range;
-  }
-  const entries = await get_('entries', range);
-  remote.entries = remote.entries
-    .filter(entry => {
-      const date = toISODate_(entry.date);
-      return date < range.from || date > range.to;
-    })
-    .concat((entries || []).map(normaliseEntry_));
-  addLoadedRange_(range.from, range.to);
-  return range;
-}
-async function loadRemoteData_(range = initialEntryRange_()) {
-  if (isDemoMode()) {
-    remote.entries = clone_(mem.entries);
-    await loadBaseData_();
-    loadedEntryRanges = [range];
-    return;
-  }
-  await loadBaseData_();
-  await loadEntriesRange_(range.from, range.to);
-}
-async function refreshActiveEntryRange_() {
-  const range = activeEntryRange_();
-  return loadEntriesRange_(range.from, range.to);
-}
-async function recoverMissingRecordQueue_() {
-  const before = pending.length;
-  pending = pending.filter(operation => !isStaleRecordOperation_(operation));
-  const removed = before - pending.length;
-  saveQueue_();
-  try { await refreshActiveEntryRange_(); } catch (error) { console.warn('Could not refresh after stale queue cleanup:', error); }
+function reconcileAcknowledged_(batch, results) {
+  const nextRemote = clone_(remote), mapping = new Map();
+  batch.forEach((op, index) => {
+    const result = results[index], name = TYPES[op.type];
+    if (result.skippedMissing) {
+      nextRemote[name] = nextRemote[name].filter(item => !identityMatches_(item, op.data));
+      return;
+    }
+    if (op.type === 'settings') nextRemote.settings = normaliseSettings_({ ...nextRemote.settings, ...op.data });
+    else if (op.type === name) {
+      const id = result.id;
+      mapping.set(String(op.tempId), { id, clientId: op.data.clientId });
+      const existing = nextRemote[name].find(item => item.clientId === op.data.clientId || String(item.id) === String(id));
+      if (!existing) nextRemote[name].unshift({ ...op.data, id });
+    } else {
+      const resolved = mapping.get(String(op.data.id));
+      const data = { ...op.data, ...(resolved ? { id: resolved.id, recordClientId: resolved.clientId } : {}) };
+      if (op.type.startsWith('delete')) nextRemote[name] = nextRemote[name].filter(item => !identityMatches_(item, data));
+      else nextRemote[name] = nextRemote[name].map(item => identityMatches_(item, data)
+        ? { ...item, ...data, id: item.id, clientId: item.clientId } : item);
+    }
+  });
+  DATASETS.forEach(name => { remote[name] = normaliseDataset_(name, nextRemote[name]); });
+  const nextQueue = pending.map(op => {
+    const resolved = mapping.get(String(op.data.id));
+    return resolved ? { ...op, data: { ...op.data, id: resolved.id, recordClientId: resolved.clientId } } : op;
+  });
+  // Atomically save the merged snapshot AND receipts before removing the queue.
+  batch.forEach(op => acknowledged.add(op.queueId));
+  lastSuccessfulSync = new Date().toISOString();
+  try { persistSnapshot_(true); }
+  catch (error) { batch.forEach(op => acknowledged.delete(op.queueId)); throw error; }
+  pending = nextQueue.filter(op => !acknowledged.has(op.queueId));
+  try { saveQueue_(); acknowledged.clear(); }
+  catch (error) { storageError = String(error.message || error); }
   renderEffective_();
-  if (removed) showToast(`Removed ${removed} stale queued edit/delete ${removed === 1 ? 'action' : 'actions'}`, 'info', 3800);
-  if (pending.length) setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} still queued`);
-  else setSync('saved', 0, 'Saved');
+}
+async function flushCore_(options = {}) {
+  if (!effectivePending_().length) return true;
+  if (!entriesComplete || !manifest) await bootstrap_();
+  if (queueError) throw new Error(queueError);
+  const batch = clone_(effectivePending_()), ids = new Set(batch.map(op => op.queueId));
+  const frozen = pending.map(op => ids.has(op.queueId) ? { ...op, sent: true } : op);
+  saveQueue_(frozen); pending = frozen;
+  flushing = true; setStatus_('saving', 'Saving ' + batch.length + ' changes…');
+  try {
+    const response = await post_('batch', { operations: batch.map(({ type, data }) => ({ type, data })) });
+    if (!Array.isArray(response.results) || response.results.length !== batch.length ||
+      !response.results.every((result, index) => result?.success === true &&
+        (batch[index].type !== TYPES[batch[index].type] || batch[index].type === 'settings' || Number.isSafeInteger(result.id)))) {
+      throw new Error('Backend did not acknowledge all queued changes. They have been kept for a safe retry.');
+    }
+    reconcileAcknowledged_(batch, response.results);
+    retryDelay = 15000; savedStatus_();
+    if (!options.suppressSavedToast) showToast('Saved', 'success', 1600);
+    if (effectivePending_().length) scheduleFlush_(150);
+    return true;
+  } finally { flushing = false; }
+}
+function backgroundSync() {
+  if (isDemoMode()) return Promise.resolve(true);
+  if (backgroundTask) return backgroundTask;
+  backgroundTask = serial_(async () => {
+    try {
+      await checkChanges_(); await flushCore_({ suppressSavedToast: true });
+      retryDelay = 15000;
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      savedStatus_(); return true;
+    } catch (error) {
+      if (!error.request) recordError_('sync', 'Background sync', 'sync', error);
+      failedStatus_(); return false;
+    }
+  }).finally(() => { backgroundTask = null; });
+  return backgroundTask;
 }
 export async function initialise() {
-  const range = initialEntryRange_();
-  setSync('loading', pending.length, 'Loading recent data…');
-  try {
-    await loadRemoteData_(range);
-    renderEffective_();
-    if (pending.length && !isDemoMode()) {
-      setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
-      scheduleFlush_(150);
-    } else {
-      setSync('saved', 0, isDemoMode() ? 'Demo mode' : 'Connected');
-    }
-    return true;
-  } catch (error) {
-    console.error('Initial load failed:', error);
-    recordError_('startup', 'Initial load', 'initialise', error, { extra: { range } });
-    renderEffective_();
-    setSync('error', pending.length, 'Initial load failed — report saved');
-    showToast('Connection failed — report saved in Settings', 'error', 5000);
-    return false;
-  }
+  if (isDemoMode()) { entriesComplete = true; renderEffective_(); setStatus_('saved', 'Demo mode'); return true; }
+  hydrate_(); renderEffective_();
+  setStatus_('loading', cacheAvailable ? 'Using saved data · checking for updates…' : 'Loading Google data…');
+  if (cacheAvailable) { backgroundSync(); return true; }
+  return backgroundSync();
 }
 export async function ensureEntriesForDate(date) {
-  const iso = toISODate_(date);
-  if (isDemoMode() || rangeCovers_(iso)) {
-    fetchEntriesByDate(iso, false);
-    return true;
-  }
-  if (entriesLoading) {
-    await entriesLoading;
-    fetchEntriesByDate(iso, false);
-    if (rangeCovers_(iso)) return true;
-  }
-  const range = rangeForDate_(iso);
-  setSync('loading', pending.length, `Loading entries around ${iso}…`);
-  entriesLoading = loadEntriesRange_(range.from, range.to);
-  try {
-    await entriesLoading;
-    renderEffective_();
-    if (pending.length) setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync`);
-    else setSync('saved', 0, 'Connected');
-    return true;
-  } catch (error) {
-    console.error('Could not load entries for date:', error);
-    recordError_('date-load', `Load ${iso}`, 'entries', error, { url: endpoint_('entries', range), extra: { range } });
-    setSync('error', pending.length, 'Could not load that date — report saved');
-    showToast(`Could not load date: ${error.message}`, 'error', 4200);
-    return false;
-  } finally {
-    entriesLoading = null;
-  }
+  if (!entriesComplete && !isDemoMode()) await backgroundSync();
+  fetchEntriesByDate(date, false); return entriesComplete;
+}
+export async function ensureLibrary() {
+  libraryNeeded = true;
+  if (isDemoMode()) return true;
+  if (libraryTask) return libraryTask;
+  libraryTask = serial_(async () => {
+    try {
+      if (!manifest || !entriesComplete) await bootstrap_();
+      else {
+        const latest = acceptManifest_(await get_('manifest'));
+        if (latest.revisions.library !== manifest.revisions.library) await loadDataset_('library');
+      }
+      return true;
+    } catch (error) { failedStatus_(); return false; }
+  }).finally(() => { libraryTask = null; });
+  return libraryTask;
 }
 export async function reconnect() {
-  if (reconnecting) {
-    showToast('Reconnect already running', 'info', 1600);
-    return false;
-  }
-  reconnecting = true;
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-    flushTimer = null;
-  }
-  const queued = pending.length;
-  setSync('loading', queued, queued ? `Reconnecting — saving ${queued} queued change${queued === 1 ? '' : 's'}…` : 'Reconnecting…');
-  try {
-    if (pending.length && !isDemoMode()) await flushPending({ reload: false, suppressSavedToast: true });
-    await loadBaseData_();
-    await refreshActiveEntryRange_();
-    renderEffective_();
-    if (pending.length && !isDemoMode()) {
-      setSync('pending', pending.length, `${pending.length} change${pending.length === 1 ? '' : 's'} still queued`);
-      showToast('Reconnected — changes still queued', 'info', 3000);
-    } else {
-      setSync('saved', 0, isDemoMode() ? 'Demo mode refreshed' : 'Reconnected');
-      showToast('Reconnected', 'success', 1800);
-    }
-    return true;
-  } catch (error) {
-    console.error('Reconnect failed:', error);
-    recordError_('reconnect', 'Manual reconnect', 'reconnect', error);
-    if (isRecordNotFoundError_(error)) {
-      await recoverMissingRecordQueue_();
-      return false;
-    }
-    renderEffective_();
-    setSync('error', pending.length, 'Reconnect failed — report saved');
-    showToast(`Reconnect failed: ${error.message}. Report saved in Settings.`, 'error', 5200);
-    return false;
-  } finally {
-    reconnecting = false;
-  }
+  setStatus_('loading', cacheAvailable ? 'Using saved data · checking for updates…' : 'Reconnecting…');
+  return backgroundSync();
 }
 export async function saveNow() {
-  if (savingNow || flushing) {
-    showToast('Save already running', 'info', 1600);
-    return false;
-  }
-  if (isDemoMode()) {
-    showToast('Demo mode — nothing to save', 'info', 1800);
-    return true;
-  }
-  if (!pending.length) {
-    setSync('saved', 0, 'Saved');
-    showToast('No changes to save', 'info', 1600);
-    return true;
-  }
+  if (savingNow) return false;
   savingNow = true;
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-    flushTimer = null;
-  }
-  setSync('saving', pending.length, `Saving ${pending.length} queued change${pending.length === 1 ? '' : 's'} now…`);
-  try {
-    return await flushPending();
-  } finally {
-    savingNow = false;
-  }
+  try { return await flushPending(); } finally { savingNow = false; }
 }
 export async function flushPending(options = {}) {
   if (isDemoMode()) return true;
-  if (flushing) return false;
-  if (pending.length === 0) return true;
-  flushing = true;
-  const batch = pending.slice();
-  setSync('saving', batch.length, `Saving ${batch.length} change${batch.length === 1 ? '' : 's'}…`);
-  try {
-    await post_('batch', { operations: batch.map(({ type, data }) => ({ type, data })) });
-    const complete = new Set(batch.map(operation => operation.queueId));
-    pending = pending.filter(operation => !complete.has(operation.queueId));
-    saveQueue_();
-    if (options.reload !== false) {
-      if (batch.some(operation => !isEntryOnlyOperation_(operation))) await loadBaseData_();
-      await refreshActiveEntryRange_();
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  return serial_(async () => {
+    try { return await flushCore_(options); }
+    catch (error) {
+      if (!error.request) recordError_('sync', 'Save queued changes', 'batch', error);
+      failedStatus_(); return false;
     }
-    renderEffective_();
-    if (pending.length) scheduleFlush_(150);
-    else {
-      setSync('saved', 0, 'Saved');
-      if (!options.suppressSavedToast) showToast('Saved', 'success', 1600);
-    }
-    return true;
-  } catch (error) {
-    console.error('Sync failed:', error);
-    recordError_('sync', 'Save queued changes', 'batch', error, { method: 'POST', url: endpoint_('batch'), extra: { queued: batch.length, reload: options.reload !== false } });
-    if (isRecordNotFoundError_(error)) {
-      await recoverMissingRecordQueue_();
-      return false;
-    }
-    setSync('error', pending.length, 'Could not sync — report saved');
-    showToast(`Sync failed: ${error.message}. Report saved in Settings.`, 'error', 5200);
-    return false;
-  } finally {
-    flushing = false;
+  });
+}
+export async function forceFullRefresh() {
+  if (isDemoMode()) return true;
+  return serial_(async () => {
+    setStatus_('loading', cacheAvailable ? 'Using saved data · refreshing Google data…' : 'Refreshing Google data…');
+    try { await bootstrap_(); savedStatus_(); return true; }
+    catch (error) { failedStatus_(); return false; }
+  });
+}
+export function clearLocalCache() {
+  if (flushing || backgroundTask || destructiveBusy) throw new Error('Wait until the current sync has finished before clearing the cache.');
+  saveQueue_(effectivePending_()); cache.clearCache();
+  cacheAvailable = false; state.cacheStatus = 'empty'; notify();
+  showToast('Local data cache cleared; unsynced changes kept', 'info', 2800);
+}
+export function getConnectionInfo() {
+  return {
+    appVersion: 'Web · v2.16', mode: isDemoMode() ? 'demo' : 'google-apps-script',
+    endpoint: CONFIG.baseUrl || '(not configured)', tokenConfigured: Boolean(CONFIG.token),
+    online: navigator.onLine, timeoutMs: FETCH_TIMEOUT_MS, pendingChanges: effectivePending_().length,
+    syncPhase: state.sync.phase, syncMessage: state.sync.message || '(none)',
+    loadedEntryRanges: entriesComplete ? 'All history' : '(none)',
+    cacheAvailable, usingCachedData, cacheStatus: state.cacheStatus, cacheBytes: cache.getCacheSize(),
+    lastSuccessfulSync, backendVersion: manifest?.backendVersion || '(unknown)',
+    revisions: manifest?.revisions || null, storageError: storageError || queueError || null
+  };
+}
+export function getSyncCacheReport() {
+  return ['ChrisFit Sync/Cache Report', 'Generated: ' + new Date().toISOString(),
+    ...Object.entries(getConnectionInfo()).map(([key, value]) => key + ': ' + (typeof value === 'object' ? JSON.stringify(value) : value))
+  ].join('\n');
+}
+export function discardPendingChanges() {
+  if (flushing || backgroundTask || destructiveBusy || pending.some(op => op.sent && !acknowledged.has(op.queueId))) {
+    throw new Error('Some changes may already have reached Google. Reconnect before discarding them.');
   }
+  const count = effectivePending_().length;
+  saveQueue_([]); pending = []; renderEffective_(); savedStatus_();
+  showToast(count + ' unsynced local changes discarded', 'info', 3000); return count;
+}
+export async function runConnectionDebugTest() {
+  const lines = [getSyncCacheReport()];
+  if (isDemoMode()) return lines[0] + '\nTEST NOT RUN: demo mode.';
+  try {
+    const started = performance.now(), meta = await get_('manifest');
+    lines.push('GET ' + endpoint_('manifest'), 'Elapsed: ' + Math.round(performance.now() - started) + ' ms', 'Response: ' + JSON.stringify(meta));
+  } catch (error) { lines.push(formatConnectionReport({ ...error.request, message: error.message })); }
+  return lines.join('\n\n');
 }
 
 function demoCommit_(type, data) {
@@ -501,7 +493,7 @@ function mutate_(type, data, tempId) {
 export function fetchEntriesByDate(date, loadIfMissing = true) {
   const iso = toISODate_(date);
   setState('entries', state.entriesFull.filter(entry => entry.date === iso));
-  if (loadIfMissing && !rangeCovers_(iso)) ensureEntriesForDate(iso);
+  if (loadIfMissing && !entriesComplete) ensureEntriesForDate(iso);
 }
 export function addEntry(date, name, calories) {
   const cleanName = String(name || '').trim();
@@ -604,123 +596,45 @@ export function replaceBurnWithEstimate(date, total) {
 }
 
 export async function exportData() {
-  return isDemoMode()
-    ? {
-        entries: mem.entries.map(({ id, ...data }) => data),
-        foods: mem.foods.map(({ id, sortOrder, active, emoji, ...data }) => data),
-        weights: mem.weights.map(({ id, ...data }) => data)
-      }
-    : get_('export');
+  if (isDemoMode()) return {
+    entries: mem.entries.map(({ id, ...data }) => data),
+    foods: mem.foods.map(({ id, sortOrder, active, emoji, ...data }) => data),
+    weights: mem.weights.map(({ id, ...data }) => data)
+  };
+  if (!entriesComplete) await forceFullRefresh();
+  if (!entriesComplete) throw new Error('No complete saved history is available to export.');
+  return {
+    entries: state.entriesFull.map(({ date, name, calories }) => ({ date, name, calories })),
+    foods: state.foods.map(({ name, calories }) => ({ name, calories })),
+    weights: state.weights.map(({ date, value }) => ({ date, value }))
+  };
+}
+async function destructiveWrite_(action, data) {
+  if (destructiveBusy) throw new Error('An import/reset is already running.');
+  if (effectivePending_().length || flushing) throw new Error('Save or discard unsynced changes before importing/resetting.');
+  destructiveBusy = true;
+  try {
+    return await serial_(async () => {
+      await post_(action, data);
+      manifest = null; entriesComplete = false;
+      await bootstrap_();
+      savedStatus_();
+    });
+  } finally { destructiveBusy = false; }
 }
 export async function importData(data, options = {}) {
   if (!data || !Array.isArray(data.entries) || !Array.isArray(data.foods) || !Array.isArray(data.weights)) {
     throw new Error('Backup must contain entries, foods and weights arrays.');
   }
   const preserveFoods = options.preserveFoods !== false;
-  pending = [];
-  saveQueue_();
-  loadedEntryRanges = [];
-  if (isDemoMode()) {
-    mem.entries = data.entries.map(item => ({ id: generateId_(), ...item }));
-    if (!preserveFoods) mem.foods = data.foods.map((item, index) => ({ id: generateId_(), ...item, sortOrder: index + 1, active: true, emoji: '' }));
-    mem.weights = data.weights.map(item => ({ id: generateId_(), ...item }));
-    await loadRemoteData_(initialEntryRange_());
-    renderEffective_();
-    return;
-  }
-  await post_('import', { ...data, preserveFoods });
-  await loadRemoteData_(initialEntryRange_());
-  renderEffective_();
-  setSync('saved', 0, 'Imported');
+  if (!isDemoMode()) return destructiveWrite_('import', { ...data, preserveFoods });
+  mem.entries = data.entries.map(item => ({ id: generateId_(), ...item }));
+  if (!preserveFoods) mem.foods = data.foods.map((item, index) => ({ id: generateId_(), ...item, sortOrder: index + 1, active: true, emoji: '' }));
+  mem.weights = data.weights.map(item => ({ id: generateId_(), ...item }));
+  demoCommit_('', {});
 }
 export async function resetAllData() {
-  pending = [];
-  saveQueue_();
-  loadedEntryRanges = [];
-  if (isDemoMode()) {
-    mem.entries = [];
-    mem.foods = [];
-    mem.weights = [];
-    await loadRemoteData_(initialEntryRange_());
-    renderEffective_();
-    return;
-  }
-  await post_('reset', {});
-  await loadRemoteData_(initialEntryRange_());
-  renderEffective_();
-}
-
-export function getConnectionInfo() {
-  return {
-    appVersion: 'Web · v2.15',
-    mode: isDemoMode() ? 'demo' : 'google-apps-script',
-    endpoint: CONFIG.baseUrl || '(not configured)',
-    tokenConfigured: Boolean(CONFIG.token),
-    online: navigator.onLine,
-    timeoutMs: FETCH_TIMEOUT_MS,
-    pendingChanges: pending.length,
-    syncPhase: state.sync.phase,
-    syncMessage: state.sync.message || '(none)',
-    loadedEntryRanges: loadedEntryRanges.map(range => `${range.from} to ${range.to}`).join(', ') || '(none)'
-  };
-}
-export function discardPendingChanges() {
-  const count = pending.length;
-  pending = [];
-  saveQueue_();
-  renderEffective_();
-  setSync('idle', 0, '');
-  showToast(`${count} unsynced local change${count === 1 ? '' : 's'} discarded`, 'info', 3000);
-  return count;
-}
-async function diagnosticRequest_(label, action, options = {}) {
-  const started = performance.now();
-  const params = options.params || {};
-  const fetchOptions = { ...options };
-  delete fetchOptions.params;
-  const url = endpoint_(action, params);
-  const method = fetchOptions.method || 'GET';
-  const lines = [label, `${method} ${url}`];
-  try {
-    const response = await fetchWithTimeout_(url, fetchOptions);
-    lines.push(
-      `HTTP result: ${response.status}`,
-      `Elapsed: ${Math.round(performance.now() - started)} ms`,
-      `Response body: ${(await response.text()).slice(0, 1200) || '(empty)'}`
-    );
-  } catch (error) {
-    const elapsedMs = Math.round(performance.now() - started);
-    recordError_('connection-test', label, action, error, { method, url, elapsedMs, extra: { params } });
-    lines.push(`FAILED after ${elapsedMs} ms`, `${error.name || 'Error'}: ${error.message || String(error)}`);
-  }
-  return lines.join('\n');
-}
-export async function runConnectionDebugTest() {
-  const info = getConnectionInfo();
-  const range = initialEntryRange_();
-  const lines = [
-    'ChrisFit Connection Debug Report',
-    `Generated: ${new Date().toISOString()}`,
-    `App version: ${info.appVersion}`,
-    `App page: ${window.location.href}`,
-    `Mode: ${info.mode}`,
-    `Endpoint: ${info.endpoint}`,
-    `Timeout per request: ${Math.round(info.timeoutMs / 1000)}s`,
-    `Pending local changes: ${info.pendingChanges}`,
-    `Loaded entry ranges: ${info.loadedEntryRanges}`,
-    `Visible sync state: ${info.syncPhase} — ${info.syncMessage}`
-  ];
-  if (isDemoMode()) return `${lines.join('\n')}\n\nTEST NOT RUN: demo mode.`;
-  const results = await Promise.all([
-    diagnosticRequest_('TEST 1 — Read settings', 'settings'),
-    diagnosticRequest_('TEST 2 — Read recent entries', 'entries', { params: range }),
-    diagnosticRequest_('TEST 3 — Read food library', 'library'),
-    diagnosticRequest_('TEST 4 — Empty batch sync route', 'batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ operations: [] })
-    })
-  ]);
-  results.forEach(result => lines.push('', result));
-  return lines.join('\n');
+  if (!isDemoMode()) return destructiveWrite_('reset', {});
+  mem.entries = []; mem.foods = []; mem.weights = [];
+  demoCommit_('', {});
 }
