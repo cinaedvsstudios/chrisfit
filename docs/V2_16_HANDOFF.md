@@ -1,6 +1,9 @@
 # ChrisFit v2.16 continuation checkpoint
 
 The backend is deployed and initialized. The frontend implementation is complete.
+Published frontend commit: 1d60463e9c629398e04220dc2efa658fae40809e.
+GitHub Pages build and deployment 36626193884 completed successfully.
+The public js/ui.js response contains Web · v2.16.
 The user authorized the original plan only; that plan is preserved in
 docs/V2_16_LOCAL_FIRST_PLAN.md. Do not request implementation authorization again.
 
@@ -56,8 +59,12 @@ Live bootstrap data was also validated. No fake food or weight records were inse
 in the user's live spreadsheet for tests.
 
 A local Chromium install was attempted for UI QA, but its downloaded ZIP was
-invalid. Cloud-browser UI verification should check the deployed frontend instead.
-This checkpoint will be updated after that check when possible.
+invalid. The cloud browser was then opened at the live ChrisFit site. It continued
+loading v2.15 modules even after reload, whereas an independent request to the
+public js/ui.js returned v2.16 and the Pages deployment reported success.
+Therefore actual v2.16 browser UI verification remains incomplete. Do not claim
+it passed. User should force-refresh and verify Web · v2.16; first successful
+bootstrap creates the cache, and subsequent opens use it immediately.
 
 ## Files changed in the frontend phase
 
