@@ -198,13 +198,23 @@ export function renderMain() {
 
   const hero = document.createElement('section');
   hero.className = 'card hero-card compact-hero-card';
-  const topRow = document.createElement('div');
-  topRow.className = 'hero-top-row';
+  const heroColumns = document.createElement('div');
+  heroColumns.className = 'hero-three-column-layout';
+
+  // Left column: logo/name above Previous Day.
+  const leftColumn = document.createElement('div');
+  leftColumn.className = 'hero-column hero-column-left';
   const title = document.createElement('div');
   title.className = 'brand-title hero-brand';
   title.appendChild(logo());
   title.insertAdjacentHTML('beforeend', '<div class="hero-brand-copy"><h1>ChrisFit</h1><div class="version-label">Web · v2.16</div></div>');
+  const previous = button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day');
+  previous.setAttribute('aria-label', 'Previous day');
+  leftColumn.append(title, previous);
 
+  // Centre column: selected date above Copy and Save.
+  const middleColumn = document.createElement('div');
+  middleColumn.className = 'hero-column hero-column-middle';
   const center = document.createElement('div');
   center.className = 'compact-hero-center';
   const dateWrap = document.createElement('div');
@@ -219,7 +229,18 @@ export function renderMain() {
   dateInput.addEventListener('change', () => applyPickedDate(dateInput.value));
   dateWrap.append(selected, dateInput);
   center.appendChild(dateWrap);
+  const middleActions = document.createElement('div');
+  middleActions.className = 'hero-middle-actions';
+  const copyButton = button('📋 Copy', 'btn-purple hero-copy-button', () => copyToday(day, week), 'Copy today and weekly summary to clipboard');
+  const saveButton = button('💾 Save', 'btn-green hero-save-button', () => api.saveNow(), 'Force-save queued local changes now');
+  copyButton.setAttribute('aria-label', 'Copy Today');
+  saveButton.setAttribute('aria-label', 'Save Now');
+  middleActions.append(copyButton, saveButton);
+  middleColumn.append(center, middleActions);
 
+  // Right column: Reconnect and Settings above Next Day.
+  const rightColumn = document.createElement('div');
+  rightColumn.className = 'hero-column hero-column-right';
   const topActions = document.createElement('div');
   topActions.className = 'hero-top-actions';
   const reconnect = button('🔄', 'btn-outline reconnect-button hero-top-action', () => api.reconnect(), 'Reconnect to Google and retry pending changes');
@@ -227,20 +248,12 @@ export function renderMain() {
   const settingsButton = button(e().emojiSettings, 'btn-outline hero-top-action', () => navigate('settings'), 'Settings');
   settingsButton.setAttribute('aria-label', 'Settings');
   topActions.append(reconnect, settingsButton);
-  topRow.append(title, center, topActions);
-
-  const bottomRow = document.createElement('div');
-  bottomRow.className = 'hero-bottom-row';
-  const previous = button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day');
-  const copyButton = button('📋 Copy', 'btn-purple hero-copy-button', () => copyToday(day, week), 'Copy today and weekly summary to clipboard');
-  const saveButton = button('💾 Save', 'btn-green hero-save-button', () => api.saveNow(), 'Force-save queued local changes now');
   const next = button(e().emojiNext, 'date-button compact-nav-button', () => changeDay(1), 'Next day');
-  previous.setAttribute('aria-label', 'Previous day');
-  copyButton.setAttribute('aria-label', 'Copy Today');
-  saveButton.setAttribute('aria-label', 'Save Now');
   next.setAttribute('aria-label', 'Next day');
-  bottomRow.append(previous, copyButton, saveButton, next);
-  hero.append(topRow, bottomRow);
+  rightColumn.append(topActions, next);
+
+  heroColumns.append(leftColumn, middleColumn, rightColumn);
+  hero.appendChild(heroColumns);
   container.appendChild(hero);
 
   const overview = document.createElement('section');
