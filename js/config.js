@@ -5,4 +5,4 @@ export const CONFIG = {
 };
 
 // Single source of truth for the website release label (backend version is independent).
-export const APP_VERSION = 'Web · v2.17';
+export const APP_VERSION = 'Web · v2.18';
