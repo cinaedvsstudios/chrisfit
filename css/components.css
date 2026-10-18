@@ -328,11 +328,14 @@
 .hero-top-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  justify-self: center;
+  justify-content: flex-end;
+  justify-self: end;
   gap: .25rem;
   min-width: 0;
 }
+.hero-column-left .compact-nav-button { justify-self: start; }
+.hero-column-middle .compact-hero-center { justify-self: center; }
+.hero-column-right .compact-nav-button { justify-self: end; }
 .compact-hero-card .hero-top-action {
   min-width: 40px;
   width: 40px;
