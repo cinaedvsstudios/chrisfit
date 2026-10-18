@@ -254,22 +254,27 @@
   .diagnostic-date-button { white-space: nowrap; }
 }
 
-/* ChrisFit compact sticky dashboard: presentation only, no data or sync changes. */
+/* Three aligned header columns; preserve sticky behaviour and button colours. */
 .compact-hero-card {
   position: sticky;
   top: 0;
   z-index: 60;
-  display: flex;
-  flex-direction: column;
-  gap: .45rem;
+  display: block;
   padding: .65rem .85rem;
   background: var(--color-surface);
 }
-.hero-top-row {
+.hero-three-column-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: center;
-  gap: .55rem;
+  gap: .65rem;
+  min-width: 0;
+}
+.hero-column {
+  display: grid;
+  grid-template-rows: 48px 44px;
+  gap: .4rem;
+  align-items: center;
   min-width: 0;
 }
 .compact-hero-card .hero-brand {
@@ -277,16 +282,14 @@
   gap: .4rem;
   margin: 0;
   min-width: 0;
+  width: 100%;
 }
 .hero-brand .logo-wrap {
   width: 36px;
   height: 36px;
   flex: 0 0 36px;
 }
-.hero-brand .brand-logo {
-  width: 36px;
-  height: 36px;
-}
+.hero-brand .brand-logo { width: 36px; height: 36px; }
 .hero-brand-copy { min-width: 0; white-space: nowrap; }
 .compact-hero-card .hero-brand-copy h1 {
   color: var(--color-text-secondary);
@@ -298,10 +301,15 @@
   line-height: 1.2;
   margin-top: .12rem;
 }
+.compact-hero-card .compact-hero-center {
+  min-width: 0;
+  width: 100%;
+  justify-self: center;
+}
 .compact-hero-card .compact-selected-date {
   min-width: 0;
   min-height: 44px;
-  padding: .1rem .2rem;
+  padding: .1rem .1rem;
   gap: .12rem;
   text-align: center;
   align-items: center;
@@ -317,11 +325,18 @@
   line-height: 1.2;
   white-space: nowrap;
 }
-.hero-top-actions { display: flex; align-items: center; gap: .3rem; }
+.hero-top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  gap: .25rem;
+  min-width: 0;
+}
 .compact-hero-card .hero-top-action {
   min-width: 40px;
   width: 40px;
-  height: 42px;
+  height: 44px;
   flex: none;
   padding: 0;
   font-size: 1.23rem;
@@ -331,28 +346,73 @@
   background: var(--color-surface-soft);
   box-shadow: none;
 }
-.hero-bottom-row {
+.compact-hero-card .hero-middle-actions {
   display: grid;
-  grid-template-columns: minmax(44px, .7fr) minmax(0, 1.45fr) minmax(0, 1.45fr) minmax(44px, .7fr);
-  align-items: center;
-  gap: .42rem;
-}
-.compact-hero-card .hero-bottom-row button {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .35rem;
   width: 100%;
+  max-width: 240px;
+  margin: 0 auto;
   min-width: 0;
-  min-height: 44px;
-  padding: .36rem .18rem;
 }
-.compact-hero-card .hero-bottom-row .compact-nav-button {
+.compact-hero-card .hero-middle-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
   height: 44px;
-  font-size: 1.7rem;
-  background: transparent;
-}
-.compact-hero-card .hero-bottom-row .hero-copy-button,
-.compact-hero-card .hero-bottom-row .hero-save-button {
+  min-height: 44px;
+  max-height: 44px;
+  min-width: 0;
+  padding: 0 .18rem;
+  font-size: .84rem;
   font-weight: 750;
-  font-size: .93rem;
   white-space: nowrap;
+  line-height: 1;
+}
+.compact-hero-card .hero-column .compact-nav-button {
+  justify-self: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  font-size: 1.7rem;
+  line-height: 1;
+}
+@media (max-width: 720px) {
+  .hero-three-column-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.38fr) 84px;
+    gap: .32rem;
+  }
+  .hero-brand .logo-wrap { width: 29px; height: 29px; flex-basis: 29px; }
+  .hero-brand .brand-logo { width: 29px; height: 29px; }
+  .compact-hero-card .hero-brand { gap: .3rem; }
+  .compact-hero-card .hero-brand-copy h1 { font-size: 1.02rem; }
+  .hero-brand-copy .version-label { font-size: .68rem; }
+  .compact-hero-card .hero-middle-actions { gap: .25rem; }
+  .compact-hero-card .hero-middle-actions button { font-size: .77rem; }
+}
+@media (max-width: 360px) {
+  .compact-hero-card { padding: .55rem .55rem; }
+  .hero-three-column-layout {
+    grid-template-columns: minmax(0, 1fr) 108px 74px;
+    gap: .18rem;
+  }
+  .hero-brand .logo-wrap { width: 24px; height: 24px; flex-basis: 24px; }
+  .hero-brand .brand-logo { width: 24px; height: 24px; }
+  .compact-hero-card .hero-brand { gap: .19rem; }
+  .compact-hero-card .hero-brand-copy h1 { font-size: .86rem; }
+  .hero-brand-copy .version-label { font-size: .61rem; }
+  .compact-hero-card .compact-selected-date strong { font-size: 1.12rem; }
+  .compact-hero-card .hero-top-action { min-width: 37px; width: 37px; }
+  .hero-top-actions { gap: 0; }
+  .compact-hero-card .hero-middle-actions { gap: .14rem; }
+  .compact-hero-card .hero-middle-actions button { font-size: .71rem; padding: 0 .05rem; }
 }
 .overview-compact { display: flex; flex-direction: column; gap: .7rem; }
 .summary-matrix-card { padding: .75rem .7rem; }
@@ -441,14 +501,6 @@
   white-space: nowrap;
 }
 @media (max-width: 360px) {
-  .compact-hero-card { padding: .55rem .58rem; }
-  .hero-top-row { gap: .3rem; }
-  .hero-brand .logo-wrap { width: 30px; height: 30px; flex-basis: 30px; }
-  .hero-brand .brand-logo { width: 30px; height: 30px; }
-  .compact-hero-card .hero-brand-copy h1 { font-size: 1rem; }
-  .compact-hero-card .compact-selected-date strong { font-size: 1.125rem; }
-  .compact-hero-card .hero-top-action { min-width: 36px; width: 36px; height: 40px; }
-  .hero-top-actions { gap: .18rem; }
   .summary-matrix { grid-template-columns: 20px minmax(0, 1fr) minmax(0, 1fr); gap: .12rem; }
   .summary-matrix-card { padding: .7rem .45rem; }
   .summary-matrix-weekly { padding-left: .18rem; }
