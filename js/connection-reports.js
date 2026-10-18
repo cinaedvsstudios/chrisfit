@@ -1,10 +1,10 @@
-import { CONFIG } from './config.js';
+import { CONFIG, APP_VERSION } from './config.js';
 import { state } from './state.js';
 
 const REPORTS_KEY = 'chrisfit.connectionReports.v1';
 const MAX_REPORT_DAYS = 5;
 const MAX_REPORTS = 50;
-export const CONNECTION_REPORT_APP_VERSION = 'Web · v2.16';
+export const CONNECTION_REPORT_APP_VERSION = APP_VERSION;
 
 function toLocalIsoDate_(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value);
