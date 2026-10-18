@@ -1,4 +1,5 @@
 import { state, showToast } from './state.js';
+import { APP_VERSION } from './config.js';
 import * as api from './api.js';
 import * as dateUtils from './date-utils.js';
 import * as calc from './calculations.js';
@@ -207,7 +208,7 @@ export function renderMain() {
   const title = document.createElement('div');
   title.className = 'brand-title hero-brand';
   title.appendChild(logo());
-  title.insertAdjacentHTML('beforeend', '<div class="hero-brand-copy"><h1>ChrisFit</h1><div class="version-label">Web · v2.16</div></div>');
+  title.insertAdjacentHTML('beforeend', '<div class="hero-brand-copy"><h1>ChrisFit</h1><div class="version-label">${APP_VERSION}</div></div>');
   const previous = button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day');
   previous.setAttribute('aria-label', 'Previous day');
   leftColumn.append(title, previous);
