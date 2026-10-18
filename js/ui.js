@@ -208,7 +208,8 @@ export function renderMain() {
   const title = document.createElement('div');
   title.className = 'brand-title hero-brand';
   title.appendChild(logo());
-  title.insertAdjacentHTML('beforeend', '<div class="hero-brand-copy"><h1>ChrisFit</h1><div class="version-label">${APP_VERSION}</div></div>');
+  title.insertAdjacentHTML('beforeend', '<div class="hero-brand-copy"><h1>ChrisFit</h1><div class="version-label"></div></div>');
+  title.querySelector('.version-label').textContent = APP_VERSION;
   const previous = button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day');
   previous.setAttribute('aria-label', 'Previous day');
   leftColumn.append(title, previous);
