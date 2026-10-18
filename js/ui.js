@@ -337,5 +337,29 @@ export function renderMain() {
   });
   entries.appendChild(list); container.appendChild(entries);
 
+  // Compact selected-day totals directly after the entry list.
+  // Reuse the same calculated daily numbers shown in the top summary.
+  const totals = document.createElement('section');
+  totals.className = 'card entry-totals-card';
+  totals.setAttribute('aria-label', 'Totals for selected day');
+  const totalMetrics = [
+    [e().emojiFood, 'Total Food', day.intake],
+    [e().emojiBurn, 'Total Burn', day.burn],
+    [e().emojiDeficit, 'Deficit', day.net]
+  ];
+  totalMetrics.forEach(([emoji, label, value]) => {
+    const item = document.createElement('div');
+    item.className = 'entry-totals-item';
+    const name = document.createElement('span');
+    name.className = 'entry-totals-label';
+    name.textContent = `${emoji} ${label}`;
+    const amount = document.createElement('strong');
+    amount.className = 'entry-totals-value';
+    amount.textContent = String(value);
+    item.append(name, amount);
+    totals.appendChild(item);
+  });
+  container.appendChild(totals);
+
   return container;
 }
