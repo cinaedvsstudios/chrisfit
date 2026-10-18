@@ -253,3 +253,204 @@
   .diagnostic-report-dates { flex-direction: row; overflow-x: auto; padding-bottom: .15rem; }
   .diagnostic-date-button { white-space: nowrap; }
 }
+
+/* ChrisFit compact sticky dashboard: presentation only, no data or sync changes. */
+.compact-hero-card {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  padding: .65rem .85rem;
+  background: var(--color-surface);
+}
+.hero-top-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;
+}
+.compact-hero-card .hero-brand {
+  justify-content: flex-start;
+  gap: .4rem;
+  margin: 0;
+  min-width: 0;
+}
+.hero-brand .logo-wrap {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+}
+.hero-brand .brand-logo {
+  width: 36px;
+  height: 36px;
+}
+.hero-brand-copy { min-width: 0; white-space: nowrap; }
+.compact-hero-card .hero-brand-copy h1 {
+  color: var(--color-text-secondary);
+  font-size: 1.125rem;
+  line-height: 1.15;
+}
+.hero-brand-copy .version-label {
+  font-size: .73rem;
+  line-height: 1.2;
+  margin-top: .12rem;
+}
+.compact-hero-card .compact-selected-date {
+  min-width: 0;
+  min-height: 44px;
+  padding: .1rem .2rem;
+  gap: .12rem;
+  text-align: center;
+  align-items: center;
+  justify-content: center;
+}
+.compact-hero-card .compact-selected-date strong {
+  color: var(--color-text-primary);
+  font-size: 1.25rem;
+  line-height: 1.13;
+}
+.compact-hero-card .compact-selected-date span {
+  font-size: .79rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.hero-top-actions { display: flex; align-items: center; gap: .3rem; }
+.compact-hero-card .hero-top-action {
+  min-width: 40px;
+  width: 40px;
+  height: 42px;
+  flex: none;
+  padding: 0;
+  font-size: 1.23rem;
+  line-height: 1;
+}
+.compact-hero-card .hero-top-action.reconnect-button {
+  background: var(--color-surface-soft);
+  box-shadow: none;
+}
+.hero-bottom-row {
+  display: grid;
+  grid-template-columns: minmax(44px, .7fr) minmax(0, 1.45fr) minmax(0, 1.45fr) minmax(44px, .7fr);
+  align-items: center;
+  gap: .42rem;
+}
+.compact-hero-card .hero-bottom-row button {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: .36rem .18rem;
+}
+.compact-hero-card .hero-bottom-row .compact-nav-button {
+  height: 44px;
+  font-size: 1.7rem;
+  background: transparent;
+}
+.compact-hero-card .hero-bottom-row .hero-copy-button,
+.compact-hero-card .hero-bottom-row .hero-save-button {
+  font-weight: 750;
+  font-size: .93rem;
+  white-space: nowrap;
+}
+.overview-compact { display: flex; flex-direction: column; gap: .7rem; }
+.summary-matrix-card { padding: .75rem .7rem; }
+.summary-matrix {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: .2rem;
+}
+.summary-matrix-legend {
+  display: grid;
+  grid-template-rows: 1.45rem 1.5rem repeat(3, 1.45rem);
+  gap: .12rem;
+  justify-items: center;
+  align-items: center;
+}
+.summary-matrix-row-label { font-size: .92rem; line-height: 1; }
+.summary-matrix-group {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 1.45rem auto;
+}
+.summary-matrix-group h2 {
+  margin: 0;
+  text-align: center;
+  line-height: 1.45rem;
+  font-size: .95rem;
+}
+.summary-matrix-columns {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .05rem;
+}
+.summary-matrix-metric {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 1.5rem repeat(3, 1.45rem);
+  gap: .12rem;
+  justify-items: center;
+  align-items: center;
+  text-align: center;
+}
+.summary-matrix-metric-label { font-size: 1rem; line-height: 1; }
+.summary-matrix-number {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  font-size: clamp(.57rem, 2.6vw, .86rem);
+  letter-spacing: -.035em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.summary-matrix-actual { font-weight: 700; }
+.summary-matrix-target { color: var(--color-text-secondary); }
+.summary-matrix-difference { font-weight: 800; }
+.summary-matrix-weekly {
+  border-left: 1px solid var(--color-divider);
+  padding-left: .3rem;
+}
+.weight-summary-compact {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .8rem 1rem;
+}
+.weight-summary-compact .weight-compact-details { min-width: 0; flex: 1 1 auto; }
+.weight-summary-compact .weight-compact-details h2 { margin: 0 0 .38rem; }
+.weight-summary-compact .weight-value { margin: .12rem 0; }
+.weight-summary-compact .weight-compact-actions {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 106px;
+  width: 106px;
+  gap: .45rem;
+  margin: 0;
+}
+.weight-summary-compact .weight-compact-actions button {
+  flex: none;
+  width: 100%;
+  min-height: 42px;
+  padding: .42rem .3rem;
+  white-space: nowrap;
+}
+@media (max-width: 360px) {
+  .compact-hero-card { padding: .55rem .58rem; }
+  .hero-top-row { gap: .3rem; }
+  .hero-brand .logo-wrap { width: 30px; height: 30px; flex-basis: 30px; }
+  .hero-brand .brand-logo { width: 30px; height: 30px; }
+  .compact-hero-card .hero-brand-copy h1 { font-size: 1rem; }
+  .compact-hero-card .compact-selected-date strong { font-size: 1.125rem; }
+  .compact-hero-card .hero-top-action { min-width: 36px; width: 36px; height: 40px; }
+  .hero-top-actions { gap: .18rem; }
+  .summary-matrix { grid-template-columns: 20px minmax(0, 1fr) minmax(0, 1fr); gap: .12rem; }
+  .summary-matrix-card { padding: .7rem .45rem; }
+  .summary-matrix-weekly { padding-left: .18rem; }
+  .summary-matrix-number { font-size: .57rem; }
+}
