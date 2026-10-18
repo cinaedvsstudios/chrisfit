@@ -36,13 +36,40 @@ function formatSigned(value) {
 function foodDelta(intake, target) { return Number(target || 0) - Number(intake || 0); }
 function burnDelta(burn, target) { return Number(burn || 0) - Number(target || 0); }
 function deficitDelta(net, targetDeficit) { return -Math.abs(Number(targetDeficit || 0)) - Number(net || 0); }
-function metric(icon, label, current, target, delta, achieved = false) {
-  const deltaNumber = Math.round(Number(delta) || 0);
-  const deltaClass = deltaNumber >= 0 ? 'summary-delta-good' : 'summary-delta-bad';
-  const targetText = target === undefined ? '' : ` / ${target}`;
-  const deltaText = delta === undefined ? '' : ` / <span class="summary-delta ${deltaClass}">${formatSigned(deltaNumber)}</span>`;
-  const row = document.createElement('div'); row.className = `summary-metric ${achieved ? 'on-target' : ''}`;
-  row.innerHTML = `<span>${icon} ${label}</span><strong class="summary-values"><span>${current}${targetText}</span>${deltaText}</strong>`; return row;
+function compactSummaryMetric(icon, label, actual, target, difference) {
+  const col = document.createElement('div');
+  col.className = 'summary-matrix-metric';
+  col.setAttribute('role', 'group');
+  col.setAttribute('aria-label', label);
+  const heading = document.createElement('span');
+  heading.className = 'summary-matrix-metric-label';
+  heading.textContent = icon;
+  heading.title = label;
+  const actualValue = document.createElement('span');
+  actualValue.className = 'summary-matrix-number summary-matrix-actual';
+  actualValue.textContent = String(actual);
+  actualValue.title = `${label} actual: ${actual}`;
+  const targetValue = document.createElement('span');
+  targetValue.className = 'summary-matrix-number summary-matrix-target';
+  targetValue.textContent = String(target);
+  targetValue.title = `${label} target: ${target}`;
+  const differenceValue = document.createElement('span');
+  differenceValue.className = `summary-matrix-number summary-matrix-difference ${Number(difference) >= 0 ? 'summary-delta-good' : 'summary-delta-bad'}`;
+  differenceValue.textContent = formatSigned(difference);
+  differenceValue.title = `${label} difference: ${formatSigned(difference)}`;
+  col.append(heading, actualValue, targetValue, differenceValue);
+  return col;
+}
+function compactSummaryGroup(title, metrics, isWeekly = false) {
+  const group = document.createElement('div');
+  group.className = `summary-matrix-group ${isWeekly ? 'summary-matrix-weekly' : 'summary-matrix-daily'}`;
+  const heading = document.createElement('h2');
+  heading.textContent = title;
+  const cols = document.createElement('div');
+  cols.className = 'summary-matrix-columns';
+  metrics.forEach(metricValues => cols.append(compactSummaryMetric(...metricValues)));
+  group.append(heading, cols);
+  return group;
 }
 function addSwipe(container) {
   let start = null;
@@ -158,14 +185,30 @@ export function renderMain() {
   const container = document.createElement('main'); container.className = 'screen main active page'; addSwipe(container);
   if (api.isDemoMode()) { const demo = document.createElement('div'); demo.className = 'demo-banner'; demo.textContent = 'DEMO MODE — changes are not saved to Google Sheets'; container.appendChild(demo); }
 
-  const hero = document.createElement('section'); hero.className = 'card hero-card compact-hero-card';
-  const left = document.createElement('div'); left.className = 'compact-hero-left';
-  const title = document.createElement('div'); title.className = 'brand-title'; title.appendChild(logo()); title.insertAdjacentHTML('beforeend', '<div><h1>ChrisFit</h1><div class="version-label">Web · v2.16</div></div>');
-  left.append(title, button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day'));
-
   const selectedIso = dateUtils.toIso(state.selectedDate);
-  const center = document.createElement('div'); center.className = 'compact-hero-center';
-  const dateWrap = document.createElement('div'); dateWrap.className = 'date-picker-wrap';
+  const day = calc.calculateDay(state.entries, e());
+  const weekEntries = state.entriesFull.filter(entry => dateUtils.getWeekStart(entry.date) === dateUtils.getWeekStart(selectedIso));
+  const week = calc.calculateWeek(weekEntries, e());
+  const dailyFoodDelta = foodDelta(day.intake, e().dailyCalories);
+  const dailyBurnDelta = burnDelta(day.burn, e().dailyBurnTarget);
+  const dailyDeficitDelta = deficitDelta(day.net, e().dailyDeficit);
+  const weeklyFoodDelta = foodDelta(week.intake, week.weeklyFoodTarget);
+  const weeklyBurnDelta = burnDelta(week.burn, week.weeklyBurnTarget);
+  const weeklyDeficitDelta = deficitDelta(week.net, week.weeklyDeficitTarget);
+
+  const hero = document.createElement('section');
+  hero.className = 'card hero-card compact-hero-card';
+  const topRow = document.createElement('div');
+  topRow.className = 'hero-top-row';
+  const title = document.createElement('div');
+  title.className = 'brand-title hero-brand';
+  title.appendChild(logo());
+  title.insertAdjacentHTML('beforeend', '<div class="hero-brand-copy"><h1>ChrisFit</h1><div class="version-label">Web · v2.16</div></div>');
+
+  const center = document.createElement('div');
+  center.className = 'compact-hero-center';
+  const dateWrap = document.createElement('div');
+  dateWrap.className = 'date-picker-wrap';
   const selected = button('', 'selected-date compact-selected-date', () => chooseDate(dateInput), 'Select date');
   selected.innerHTML = `<strong>${dateUtils.getDayName(state.selectedDate)}</strong><span>${dateUtils.formatDisplay(state.selectedDate)}</span>`;
   const dateInput = document.createElement('input');
@@ -177,38 +220,90 @@ export function renderMain() {
   dateWrap.append(selected, dateInput);
   center.appendChild(dateWrap);
 
-  const right = document.createElement('div'); right.className = 'compact-hero-right';
-  right.append(button(`${e().emojiSettings} Settings`, 'btn-outline compact-button', () => navigate('settings')), button(e().emojiNext, 'date-button compact-nav-button', () => changeDay(1), 'Next day'));
-  hero.append(left, center, right); container.appendChild(hero);
+  const topActions = document.createElement('div');
+  topActions.className = 'hero-top-actions';
+  const reconnect = button('🔄', 'btn-outline reconnect-button hero-top-action', () => api.reconnect(), 'Reconnect to Google and retry pending changes');
+  reconnect.setAttribute('aria-label', 'Reconnect');
+  const settingsButton = button(e().emojiSettings, 'btn-outline hero-top-action', () => navigate('settings'), 'Settings');
+  settingsButton.setAttribute('aria-label', 'Settings');
+  topActions.append(reconnect, settingsButton);
+  topRow.append(title, center, topActions);
 
-  const day = calc.calculateDay(state.entries, e());
-  const weekEntries = state.entriesFull.filter(entry => dateUtils.getWeekStart(entry.date) === dateUtils.getWeekStart(selectedIso));
-  const week = calc.calculateWeek(weekEntries, e());
-  const dailyFoodDelta = foodDelta(day.intake, e().dailyCalories);
-  const dailyBurnDelta = burnDelta(day.burn, e().dailyBurnTarget);
-  const dailyDeficitDelta = deficitDelta(day.net, e().dailyDeficit);
-  const weeklyFoodDelta = foodDelta(week.intake, week.weeklyFoodTarget);
-  const weeklyBurnDelta = burnDelta(week.burn, week.weeklyBurnTarget);
-  const weeklyDeficitDelta = deficitDelta(week.net, week.weeklyDeficitTarget);
-  const daily = document.createElement('article'); daily.className = 'card summary-card'; daily.innerHTML = '<h2>Daily Summary</h2>';
-  daily.append(metric(e().emojiFood, 'Food', day.intake, e().dailyCalories, dailyFoodDelta), metric(e().emojiBurn, 'Burn', day.burn, e().dailyBurnTarget, dailyBurnDelta), metric(e().emojiDeficit, 'Deficit', day.net, `-${e().dailyDeficit}`, dailyDeficitDelta, day.achieved));
-  const weekly = document.createElement('article'); weekly.className = 'card summary-card'; weekly.innerHTML = '<h2>Weekly Summary</h2>';
-  weekly.append(metric(e().emojiFood, 'Food', week.intake, week.weeklyFoodTarget, weeklyFoodDelta), metric(e().emojiBurn, 'Burn', week.burn, week.weeklyBurnTarget, weeklyBurnDelta), metric(e().emojiDeficit, 'Deficit', week.net, `-${week.weeklyDeficitTarget}`, weeklyDeficitDelta, week.achieved));
+  const bottomRow = document.createElement('div');
+  bottomRow.className = 'hero-bottom-row';
+  const previous = button(e().emojiPrevious, 'date-button compact-nav-button', () => changeDay(-1), 'Previous day');
+  const copyButton = button('📋 Copy', 'btn-purple hero-copy-button', () => copyToday(day, week), 'Copy today and weekly summary to clipboard');
+  const saveButton = button('💾 Save', 'btn-green hero-save-button', () => api.saveNow(), 'Force-save queued local changes now');
+  const next = button(e().emojiNext, 'date-button compact-nav-button', () => changeDay(1), 'Next day');
+  previous.setAttribute('aria-label', 'Previous day');
+  copyButton.setAttribute('aria-label', 'Copy Today');
+  saveButton.setAttribute('aria-label', 'Save Now');
+  next.setAttribute('aria-label', 'Next day');
+  bottomRow.append(previous, copyButton, saveButton, next);
+  hero.append(topRow, bottomRow);
+  container.appendChild(hero);
+
+  const overview = document.createElement('section');
+  overview.className = 'overview-compact';
+  const summary = document.createElement('article');
+  summary.className = 'card summary-matrix-card';
+  summary.setAttribute('aria-label', 'Daily and weekly summaries');
+  const matrix = document.createElement('div');
+  matrix.className = 'summary-matrix';
+  const legend = document.createElement('div');
+  legend.className = 'summary-matrix-legend';
+  const legendSpacers = ['',''];
+  legendSpacers.forEach(() => {
+    const spacer = document.createElement('span');
+    spacer.setAttribute('aria-hidden', 'true');
+    legend.appendChild(spacer);
+  });
+  [['🧾', 'Actual'], ['🎯', 'Target'], ['↕️', 'Difference']].forEach(([icon, label]) => {
+    const marker = document.createElement('span');
+    marker.className = 'summary-matrix-row-label';
+    marker.textContent = icon;
+    marker.title = label;
+    marker.setAttribute('aria-label', label);
+    legend.appendChild(marker);
+  });
+  matrix.append(
+    legend,
+    compactSummaryGroup('Daily', [
+      [e().emojiFood, 'Food', day.intake, e().dailyCalories, dailyFoodDelta],
+      [e().emojiBurn, 'Burn', day.burn, e().dailyBurnTarget, dailyBurnDelta],
+      [e().emojiDeficit, 'Deficit', day.net, `-${e().dailyDeficit}`, dailyDeficitDelta]
+    ]),
+    compactSummaryGroup('Weekly', [
+      [e().emojiFood, 'Food', week.intake, week.weeklyFoodTarget, weeklyFoodDelta],
+      [e().emojiBurn, 'Burn', week.burn, week.weeklyBurnTarget, weeklyBurnDelta],
+      [e().emojiDeficit, 'Deficit', week.net, `-${week.weeklyDeficitTarget}`, weeklyDeficitDelta]
+    ], true)
+  );
+  summary.appendChild(matrix);
+  overview.appendChild(summary);
   const selectedWeight = calc.getWeightForDate(state.weights, selectedIso);
-  const weight = document.createElement('article'); weight.className = 'card summary-card weight-summary';
+  const weight = document.createElement('article');
+  weight.className = 'card summary-card weight-summary weight-summary-compact';
+  const weightDetails = document.createElement('div');
+  weightDetails.className = 'weight-compact-details';
   if (selectedWeight) {
     const carriedForward = selectedWeight.date !== selectedIso;
     const recordedLabel = carriedForward
       ? `Last recorded ${dateUtils.formatDisplay(selectedWeight.date)}`
       : `Recorded ${dateUtils.formatDisplay(selectedWeight.date)}`;
-    weight.innerHTML = `<h2>${e().emojiWeight} Weight</h2><div class="weight-value">${selectedWeight.value} kg</div><p class="subtle-label">${calc.calculateBMI(selectedWeight.value).toFixed(1)} BMI<br>${recordedLabel}</p>`;
+    weightDetails.innerHTML = `<h2>${e().emojiWeight} Weight</h2><div class="weight-value">${selectedWeight.value} kg</div><p class="subtle-label">${calc.calculateBMI(selectedWeight.value).toFixed(1)} BMI<br>${recordedLabel}</p>`;
   } else {
-    weight.innerHTML = `<h2>${e().emojiWeight} Weight</h2><div class="weight-value">— kg</div><p class="subtle-label">No weight recorded on or before ${dateUtils.formatDisplay(state.selectedDate)}</p>`;
+    weightDetails.innerHTML = `<h2>${e().emojiWeight} Weight</h2><div class="weight-value">— kg</div><p class="subtle-label">No weight recorded on or before ${dateUtils.formatDisplay(state.selectedDate)}</p>`;
   }
-  const weightActions = document.createElement('div'); weightActions.className = 'inline-actions'; weightActions.append(button(`${e().emojiWeight} Add`, 'btn-green', () => showWeightDialog()));
-  if (selectedWeight) weightActions.append(button(`${e().emojiEdit} Edit`, 'btn-outline', () => showWeightDialog(selectedWeight), `Edit weight recorded ${dateUtils.formatDisplay(selectedWeight.date)}`));
-  weight.appendChild(weightActions);
-  const overview = document.createElement('section'); overview.className = 'overview-grid'; overview.append(daily, weekly, weight); container.appendChild(overview);
+  const weightActions = document.createElement('div');
+  weightActions.className = 'inline-actions weight-compact-actions';
+  weightActions.append(button(`${e().emojiWeight} Add`, 'btn-green', () => showWeightDialog()));
+  if (selectedWeight) {
+    weightActions.append(button(`${e().emojiEdit} Edit`, 'btn-outline', () => showWeightDialog(selectedWeight), `Edit weight recorded ${dateUtils.formatDisplay(selectedWeight.date)}`));
+  }
+  weight.append(weightDetails, weightActions);
+  overview.appendChild(weight);
+  container.appendChild(overview);
   container.appendChild(renderGuidanceCard(state.selectedDate));
 
   const quick = document.createElement('section'); quick.className = 'card';
@@ -242,13 +337,5 @@ export function renderMain() {
   });
   entries.appendChild(list); container.appendChild(entries);
 
-  const copy = document.createElement('section');
-  copy.className = 'copy-today-card';
-  copy.append(
-    button('📋 Copy Today', 'btn-purple copy-today-button', () => copyToday(day, week), 'Copy today and weekly summary to clipboard'),
-    button('🔄 Reconnect', 'btn-outline reconnect-button', () => api.reconnect(), 'Retry queued changes and reload the active Google data range'),
-    button('💾 Save Now', 'btn-green save-now-button', () => api.saveNow(), 'Force-save queued local changes now')
-  );
-  container.appendChild(copy);
   return container;
 }
