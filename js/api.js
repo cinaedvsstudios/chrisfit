@@ -1,5 +1,5 @@
 /* ChrisFit v2.16: cache-first startup and serialized, duplicate-safe sync. */
-import { CONFIG } from './config.js';
+import { CONFIG, APP_VERSION } from './config.js';
 import { state, defaultSettings, notify, setState, setSync, showToast } from './state.js';
 import { recordConnectionReport, formatConnectionReport } from './connection-reports.js';
 import * as cache from './cache.js';
@@ -428,7 +428,7 @@ export function clearLocalCache() {
 }
 export function getConnectionInfo() {
   return {
-    appVersion: 'Web · v2.16', mode: isDemoMode() ? 'demo' : 'google-apps-script',
+    appVersion: APP_VERSION, mode: isDemoMode() ? 'demo' : 'google-apps-script',
     endpoint: CONFIG.baseUrl || '(not configured)', tokenConfigured: Boolean(CONFIG.token),
     online: navigator.onLine, timeoutMs: FETCH_TIMEOUT_MS, pendingChanges: effectivePending_().length,
     syncPhase: state.sync.phase, syncMessage: state.sync.message || '(none)',
