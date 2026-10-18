@@ -86,6 +86,22 @@ function isCurrentDayBeforeLogReminder(selectedIso, now = new Date()) {
 function hasMissingLogs(conditions) {
   return conditions.some(condition => ['missing_food', 'missing_burn', 'missing_both'].includes(condition));
 }
+// If the dashboard stays open through 10 PM, update the wording at the cutoff.
+// Maintain only one timer despite normal reactive rerenders.
+let eveningGuidanceTimer = null;
+function scheduleEveningGuidanceUpdate(selectedIso, now = new Date()) {
+  if (eveningGuidanceTimer !== null) {
+    clearTimeout(eveningGuidanceTimer);
+    eveningGuidanceTimer = null;
+  }
+  if (!isCurrentDayBeforeLogReminder(selectedIso, now)) return;
+  const cutoff = new Date(now);
+  cutoff.setHours(TODAY_LOG_REMINDER_HOUR, 0, 0, 0);
+  eveningGuidanceTimer = setTimeout(() => {
+    eveningGuidanceTimer = null;
+    if (document.querySelector('.guidance-card')) notify();
+  }, Math.max(0, cutoff.getTime() - now.getTime()) + 100);
+}
 function dayConditions(entries) {
   const conditions = [];
   const food = hasFood(entries);
@@ -190,6 +206,7 @@ export function renderGuidanceCard(selectedDate = state.selectedDate) {
   const yesterdayIso = dateUtils.toIso(addDays(selectedDate, -1));
   const selectedEntries = entriesForDate(selectedIso);
   const now = new Date();
+  scheduleEveningGuidanceUpdate(selectedIso, now);
   const todayConditions = dayConditions(selectedEntries);
   const todayMessage = isCurrentDayBeforeLogReminder(selectedIso, now) && hasMissingLogs(todayConditions)
     ? 'Today is still in progress. Add food and activity whenever you are ready.'
