@@ -454,3 +454,38 @@
   .summary-matrix-weekly { padding-left: .18rem; }
   .summary-matrix-number { font-size: .57rem; }
 }
+
+/* Selected-day totals immediately below Entries. */
+.entry-totals-card {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  align-items: center;
+  padding: .75rem .55rem;
+}
+.entry-totals-item {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .3rem;
+  padding: .18rem .2rem;
+  text-align: center;
+}
+.entry-totals-item + .entry-totals-item {
+  border-left: 1px solid var(--color-divider);
+}
+.entry-totals-label {
+  color: var(--color-text-secondary);
+  font-size: clamp(.72rem, 2.8vw, .9rem);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.entry-totals-value {
+  color: var(--color-text-primary);
+  font-size: clamp(.95rem, 3.4vw, 1.18rem);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
