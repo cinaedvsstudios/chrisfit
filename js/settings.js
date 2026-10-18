@@ -537,7 +537,7 @@ export function renderSettings() {
 
   const notes = panel('ℹ️ Release Notes');
   notes.classList.add('release-notes');
-  notes.innerHTML += `<p><strong>ChrisFit ${APP_VERSION}</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Compact sticky three-column header, six-column daily/weekly summaries and side-by-side weight controls.</li><li>Food, burn and deficit totals beneath Entries.</li><li>Current-day missing-entry reminders start at 10 PM; earlier missing data remains reportable.</li><li>Cache-first startup, background Google revision checks and safe pending-change retries remain unchanged.</li></ul>`;
+  notes.innerHTML += `<p><strong>ChrisFit ${APP_VERSION}</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Daily dashboard header includes Add Food, Copy and Save shortcuts.</li><li>Food, burn and deficit totals remain visible in a bottom dock on the daily screen only.</li><li>Compact sticky three-column header, six-column daily/weekly summaries and side-by-side weight controls.</li><li>Current-day missing-entry reminders start at 10 PM; earlier missing data remains reportable.</li><li>Cache-first startup, background Google revision checks and safe pending-change retries remain unchanged.</li></ul>`;
   content.appendChild(notes);
 
   container.appendChild(content);
