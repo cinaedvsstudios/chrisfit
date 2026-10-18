@@ -352,10 +352,10 @@
 }
 .compact-hero-card .hero-middle-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: .35rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .2rem;
   width: 100%;
-  max-width: 240px;
+  max-width: 360px;
   margin: 0 auto;
   min-width: 0;
 }
@@ -395,8 +395,8 @@
   .compact-hero-card .hero-brand { gap: .2rem; }
   .compact-hero-card .hero-brand-copy h1 { font-size: .98rem; }
   .hero-brand-copy .version-label { font-size: .68rem; }
-  .compact-hero-card .hero-middle-actions { gap: .25rem; }
-  .compact-hero-card .hero-middle-actions button { font-size: .77rem; }
+  .compact-hero-card .hero-middle-actions { gap: .13rem; }
+  .compact-hero-card .hero-middle-actions button { font-size: .68rem; padding: 0 .05rem; }
 }
 @media (max-width: 360px) {
   .compact-hero-card { padding: .55rem .55rem; }
@@ -409,8 +409,8 @@
   .compact-hero-card .compact-selected-date strong { font-size: 1.12rem; }
   .compact-hero-card .hero-top-action { min-width: 37px; width: 37px; }
   .hero-top-actions { gap: 0; }
-  .compact-hero-card .hero-middle-actions { gap: .14rem; }
-  .compact-hero-card .hero-middle-actions button { font-size: .71rem; padding: 0 .05rem; }
+  .compact-hero-card .hero-middle-actions { gap: .08rem; }
+  .compact-hero-card .hero-middle-actions button { font-size: .59rem; padding: 0; letter-spacing: -.02em; }
 }
 .overview-compact { display: flex; flex-direction: column; gap: .7rem; }
 .summary-matrix-card { padding: .75rem .7rem; }
@@ -505,13 +505,27 @@
   .summary-matrix-number { font-size: .57rem; }
 }
 
-/* Selected-day totals immediately below Entries. */
+/* Daily-screen-only docked totals. Other screens do not render this element. */
+.main.page {
+  /* The final entry remains reachable above the fixed bottom totals strip. */
+  padding-bottom: calc(9rem + env(safe-area-inset-bottom));
+}
 .entry-totals-card {
+  position: fixed;
+  bottom: calc(.65rem + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: calc(100% - 1.8rem);
+  max-width: 930px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   align-items: center;
   padding: .75rem .55rem;
+}
+@media (max-width: 720px) {
+  .entry-totals-card { width: calc(100% - 1.3rem); }
 }
 .entry-totals-item {
   min-width: 0;
