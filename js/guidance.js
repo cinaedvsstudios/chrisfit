@@ -77,6 +77,15 @@ function addDays(date, days) {
 function entriesForDate(iso) { return state.entriesFull.filter(entry => entry.date === iso); }
 function hasFood(entries) { return entries.some(entry => Number(entry.calories) > 0); }
 function hasBurn(entries) { return entries.some(entry => Number(entry.calories) < 0); }
+// Missing entries for the real current day are not overdue until 10 PM,
+// measured in the browser's local time. Historical dates retain their rules.
+const TODAY_LOG_REMINDER_HOUR = 22;
+function isCurrentDayBeforeLogReminder(selectedIso, now = new Date()) {
+  return selectedIso === dateUtils.toIso(now) && now.getHours() < TODAY_LOG_REMINDER_HOUR;
+}
+function hasMissingLogs(conditions) {
+  return conditions.some(condition => ['missing_food', 'missing_burn', 'missing_both'].includes(condition));
+}
 function dayConditions(entries) {
   const conditions = [];
   const food = hasFood(entries);
@@ -109,15 +118,19 @@ function weekEntriesFor(selectedIso) {
   const weekStart = dateUtils.getWeekStart(selectedIso);
   return state.entriesFull.filter(entry => dateUtils.getWeekStart(entry.date) === weekStart);
 }
-function weekConditions(selectedIso) {
+function weekConditions(selectedIso, now = new Date()) {
   const conditions = [];
   const weekStart = dateUtils.getWeekStart(selectedIso);
   const entries = weekEntriesFor(selectedIso);
   const selected = dateUtils.parseIso(selectedIso);
+  const currentDayStillOpen = isCurrentDayBeforeLogReminder(selectedIso, now);
   let cursor = dateUtils.parseIso(weekStart);
   while (cursor <= selected) {
-    const dayEntries = entriesForDate(dateUtils.toIso(cursor));
-    if (!hasFood(dayEntries) || !hasBurn(dayEntries)) {
+    const cursorIso = dateUtils.toIso(cursor);
+    const dayEntries = entriesForDate(cursorIso);
+    // Today's entries are not 'missing' until the evening. Completed days
+    // earlier this week continue to trigger the normal reminder.
+    if (!(currentDayStillOpen && cursorIso === selectedIso) && (!hasFood(dayEntries) || !hasBurn(dayEntries))) {
       conditions.push('missing_data');
       break;
     }
@@ -176,9 +189,13 @@ export function renderGuidanceCard(selectedDate = state.selectedDate) {
   const selectedIso = dateUtils.toIso(selectedDate);
   const yesterdayIso = dateUtils.toIso(addDays(selectedDate, -1));
   const selectedEntries = entriesForDate(selectedIso);
-  const todayMessage = pickMessage('today', dayConditions(selectedEntries));
+  const now = new Date();
+  const todayConditions = dayConditions(selectedEntries);
+  const todayMessage = isCurrentDayBeforeLogReminder(selectedIso, now) && hasMissingLogs(todayConditions)
+    ? 'Today is still in progress. Add food and activity whenever you are ready.'
+    : pickMessage('today', todayConditions);
   const yesterdayMessage = pickMessage('yesterday', dayConditions(entriesForDate(yesterdayIso)));
-  const weekMessage = pickMessage('week', weekConditions(selectedIso));
+  const weekMessage = pickMessage('week', weekConditions(selectedIso, now));
   const dayTotals = calc.calculateDay(selectedEntries, settings());
   const weekTotals = calc.calculateWeek(weekEntriesFor(selectedIso), settings());
 
