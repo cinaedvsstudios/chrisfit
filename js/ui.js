@@ -126,6 +126,14 @@ function buildCopyTodayText(day, week) {
   ];
   return lines.join('\n');
 }
+// Shared by Quick Add and the compact header: both must open the same food dialog.
+function openAddFoodDialog() {
+  showEntryDialog('food');
+  api.ensureLibrary().then(() => {
+    const search = document.querySelector('.modal input[type="search"]');
+    if (search) search.dispatchEvent(new Event('input'));
+  });
+}
 function showManualCopyBox(text) {
   const overlay = document.createElement('div');
   overlay.className = 'copy-fallback-overlay';
@@ -214,7 +222,7 @@ export function renderMain() {
   previous.setAttribute('aria-label', 'Previous day');
   leftColumn.append(title, previous);
 
-  // Centre column: selected date above Copy and Save.
+  // Centre column: selected date above Add, Copy and Save.
   const middleColumn = document.createElement('div');
   middleColumn.className = 'hero-column hero-column-middle';
   const center = document.createElement('div');
@@ -233,11 +241,13 @@ export function renderMain() {
   center.appendChild(dateWrap);
   const middleActions = document.createElement('div');
   middleActions.className = 'hero-middle-actions';
+  const addFoodButton = button(`${e().emojiFood} Add`, 'btn-blue hero-add-food-button', openAddFoodDialog, 'Add food to the selected day');
   const copyButton = button('📋 Copy', 'btn-purple hero-copy-button', () => copyToday(day, week), 'Copy today and weekly summary to clipboard');
   const saveButton = button('💾 Save', 'btn-green hero-save-button', () => api.saveNow(), 'Force-save queued local changes now');
+  addFoodButton.setAttribute('aria-label', 'Add Food');
   copyButton.setAttribute('aria-label', 'Copy Today');
   saveButton.setAttribute('aria-label', 'Save Now');
-  middleActions.append(copyButton, saveButton);
+  middleActions.append(addFoodButton, copyButton, saveButton);
   middleColumn.append(center, middleActions);
 
   // Right column: Reconnect and Settings above Next Day.
@@ -324,13 +334,7 @@ export function renderMain() {
   const quick = document.createElement('section'); quick.className = 'card';
   quick.innerHTML = `<div class="card-heading"><div><h2>Quick Add</h2><p>Tap saved items repeatedly to log multiple units.</p></div></div>`;
   const actions = document.createElement('div'); actions.className = 'primary-actions';
-  actions.append(button(`${e().emojiFood} Add Food`, 'btn-blue', () => {
-    showEntryDialog('food');
-    api.ensureLibrary().then(() => {
-      const search = document.querySelector('.modal input[type="search"]');
-      if (search) search.dispatchEvent(new Event('input'));
-    });
-  }), button(`${e().emojiBurn} Add Burn`, 'btn-red', () => showEntryDialog('burn')), button(`${e().emojiBmr} BMR`, 'btn-green', () => api.addEntry(state.selectedDate, 'BMR', -Math.abs(e().bmr))), button(`${e().emojiHistory} History`, 'btn-outline', () => navigate('history')));
+  actions.append(button(`${e().emojiFood} Add Food`, 'btn-blue', openAddFoodDialog), button(`${e().emojiBurn} Add Burn`, 'btn-red', () => showEntryDialog('burn')), button(`${e().emojiBmr} BMR`, 'btn-green', () => api.addEntry(state.selectedDate, 'BMR', -Math.abs(e().bmr))), button(`${e().emojiHistory} History`, 'btn-outline', () => navigate('history')));
   const foods = document.createElement('div'); foods.className = 'food-grid';
   const activeFoods = state.foods.filter(food => food.active);
   if (!activeFoods.length) foods.innerHTML = '<p class="empty-state">No visible saved food buttons. Manage them in Settings.</p>';
@@ -352,7 +356,8 @@ export function renderMain() {
   });
   entries.appendChild(list); container.appendChild(entries);
 
-  // Compact selected-day totals directly after the entry list.
+  // Daily-only fixed totals strip: kept in this screen's DOM so it vanishes
+  // automatically when navigating to Settings or History.
   // Reuse the same calculated daily numbers shown in the top summary.
   const totals = document.createElement('section');
   totals.className = 'card entry-totals-card';
