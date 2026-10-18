@@ -1,4 +1,5 @@
 import { state, defaultSettings, showToast } from './state.js';
+import { APP_VERSION } from './config.js';
 import * as api from './api.js';
 import * as reports from './connection-reports.js';
 import { navigate } from './navigation.js';
@@ -536,7 +537,7 @@ export function renderSettings() {
 
   const notes = panel('ℹ️ Release Notes');
   notes.classList.add('release-notes');
-  notes.innerHTML += `<p><strong>ChrisFit Web · v2.16</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Opens saved data immediately and checks Google revisions in the background.</li><li>Pending changes have stable IDs for safe retries.</li><li>Saved data and sync reports can be managed above.</li></ul>`;
+  notes.innerHTML += `<p><strong>ChrisFit ${APP_VERSION}</strong></p><p>Written and developed by Christopher Zachary Tyler · CINAEDVS Studios · 2026</p><ul><li>Compact sticky three-column header, six-column daily/weekly summaries and side-by-side weight controls.</li><li>Food, burn and deficit totals beneath Entries.</li><li>Current-day missing-entry reminders start at 10 PM; earlier missing data remains reportable.</li><li>Cache-first startup, background Google revision checks and safe pending-change retries remain unchanged.</li></ul>`;
   content.appendChild(notes);
 
   container.appendChild(content);
