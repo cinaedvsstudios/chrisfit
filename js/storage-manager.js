@@ -162,6 +162,8 @@ class StorageManager {
     this.verification = { status: 'unchecked', message: 'Not checked against Google Sheets yet.' };
     this.restoreItems = null;
     this.restoreMode = 'missing';
+    this.exportCategories = new Set(CATEGORIES);
+    this.categoryFilter = 'all';
     this.overlay = node('div', 'storage-overlay');
     this.overlay.setAttribute('role', 'presentation');
     this.dialog = node('section', 'storage-dialog');
@@ -222,6 +224,20 @@ class StorageManager {
       review: this.entries.filter(e => e.review).length + this.unknown.length,
       verified: this.verification.status === 'verified' ? 1 : 0
     };
+  }
+  storageReport() {
+    return [
+      'ChrisFit Browser Storage Report',
+      'Generated: ' + new Date().toISOString(),
+      'Application-calculated local storage: ' + formattedSize(this.totals().bytes),
+      'Origin-wide browser estimate: ' + formattedSize(this.usage?.usage ?? null),
+      'Google verification: ' + this.verification.status + ' — ' + this.verification.message,
+      '',
+      ...this.entries.map(e => [e.key, e.category, e.status, e.protected ? 'Protected' : 'Reviewable', formattedSize(e.bytes)].join(' | ')),
+      '',
+      this.unknown.length + ' unknown-origin entry/entries excluded from management.',
+      ...this.capabilities.map(e => e.name + ': ' + e.description)
+    ].join('\\n');
   }
   async verify() {
     this.verification = { status: 'checking', message: 'Comparing the complete offline snapshot with current Google data…' };
@@ -394,7 +410,9 @@ class StorageManager {
       button('Clear Selected', () => this.remove([...this.selected])),
       button('Remove Server-Verified Copies', () => window.alert('No redundant server-verified copies are eligible. ChrisFit must retain the offline snapshot for local-first operation.')),
       button('Browse Storage', () => { this.tab = 'browse'; this.draw(); }),
-      button('Backup / Export', () => { this.tab = 'backup'; this.draw(); })
+      button('Backup / Export', () => { this.tab = 'backup'; this.draw(); }),
+      button('Refresh Storage', () => this.scan()),
+      button('Copy Storage Report', () => copy(this.storageReport()))
     );
     mount.appendChild(row);
     const verify = node('div', 'storage-verification');
@@ -412,7 +430,7 @@ class StorageManager {
     const head = node('div', 'storage-category-top');
     head.append(node('strong', '', entry.label), node('span', 'storage-muted', formattedSize(entry.bytes)));
     card.appendChild(head);
-    card.appendChild(node('p', 'storage-muted', entry.key + ' · ' + entry.status + ' · ' + (entry.protected ? 'Protected' : 'Needs review')));
+    card.appendChild(node('p', 'storage-muted', entry.key + ' · localStorage · ' + entry.status + ' · ' + (entry.protected ? 'Protected' : 'Needs review') + ' · Last modified: Not recorded'));
     if (entry.note) card.appendChild(node('p', 'settings-note', entry.note));
     if (OWNED.has(entry.key)) {
       const actions = node('div', 'storage-actions');
@@ -462,7 +480,16 @@ class StorageManager {
     const check = node('input'); check.type = 'checkbox'; check.checked = this.onlyRemovable;
     check.addEventListener('change', () => { this.onlyRemovable = check.checked; listEntries(); });
     only.append(check, node('span', '', 'Show reviewable items only'));
-    controls.append(search, only);
+    const category = node('select');
+    const allOption = node('option', '', 'All categories'); allOption.value = 'all'; category.appendChild(allOption);
+    CATEGORIES.forEach(name => { const option = node('option', '', name); option.value = name; category.appendChild(option); });
+    category.value = this.categoryFilter;
+    category.addEventListener('change', () => { this.categoryFilter = category.value; listEntries(); });
+    const includeProtected = node('label', 'storage-checkbox-line');
+    const protectBox = node('input'); protectBox.type = 'checkbox'; protectBox.checked = this.showProtected;
+    protectBox.addEventListener('change', () => { this.showProtected = protectBox.checked; listEntries(); });
+    includeProtected.append(protectBox, node('span', '', 'Show protected items'));
+    controls.append(search, category, only, includeProtected);
     mount.appendChild(controls);
     const list = node('div');
     mount.appendChild(list);
@@ -470,7 +497,9 @@ class StorageManager {
       list.replaceChildren();
       const query = this.query.toLowerCase();
       const matches = [...this.entries, ...this.unknown].filter(e =>
-        (!this.onlyRemovable || e.review) && (e.label + ' ' + e.key + ' ' + e.category).toLowerCase().includes(query));
+        (!this.onlyRemovable || e.review) && (this.showProtected || !e.protected) &&
+        (this.categoryFilter === 'all' || e.category === this.categoryFilter) &&
+        (e.label + ' ' + e.key + ' ' + e.category).toLowerCase().includes(query));
       if (!matches.length) list.appendChild(node('p', 'settings-note', 'No entries match these filters.'));
       matches.sort((a, b) => b.bytes - a.bytes).forEach(e => this.entryCard(e, list));
     };
@@ -479,6 +508,19 @@ class StorageManager {
   drawBackup(mount) {
     mount.appendChild(this.heading('Backup & Restore', 'These exports contain fitness information stored by this browser. Keep them somewhere private. Google Sheets is not changed.'));
     mount.append(button('📤 Export all application-owned browser data', () => this.exportSelection()));
+    mount.appendChild(this.heading('Export selected categories', 'Select which types of locally saved ChrisFit information to include.'));
+    for (const category of CATEGORIES) {
+      if (!this.entries.some(e => e.category === category)) continue;
+      const label = node('label', 'storage-checkbox-line');
+      const check = node('input'); check.type = 'checkbox'; check.checked = this.exportCategories.has(category);
+      check.addEventListener('change', () => {
+        if (check.checked) this.exportCategories.add(category); else this.exportCategories.delete(category);
+      });
+      label.append(check, node('span', '', category));
+      mount.appendChild(label);
+    }
+    mount.appendChild(button('Export selected categories', () =>
+      this.exportSelection(this.entries.filter(e => this.exportCategories.has(e.category)).map(e => e.key))));
     const note = node('p', 'settings-note', 'This is a browser-storage backup, separate from the existing Android-compatible fitness backup in Settings. It includes recognised ChrisFit keys and excludes unrelated or unknown data.');
     mount.append(note);
     const input = node('input');
