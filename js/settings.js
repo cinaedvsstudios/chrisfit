@@ -4,6 +4,7 @@ import * as api from './api.js';
 import * as reports from './connection-reports.js';
 import { navigate } from './navigation.js';
 import { getThemePreference, setThemePreference } from './theme.js';
+import { openStorageManager } from './storage-manager.js';
 
 function s() { return state.settings; }
 function field(label, value, type = 'text') {
@@ -481,6 +482,15 @@ export function renderSettings() {
   cacheActions.append(fullRefresh, clearCache, copySync);
   local.append(cacheStatus, cacheActions);
   content.appendChild(local);
+
+  const storageManager = panel('💾 Storage & Cleanup');
+  const storageIntro = document.createElement('p');
+  storageIntro.className = 'settings-note';
+  storageIntro.textContent = 'Inspect, back up and clean up ChrisFit browser data on this device. Offline fitness history, settings and unsynced changes are protected by default. Google Sheets records are never deleted by browser cleanup.';
+  const openStorage = button('💾 Open Storage Manager', 'btn-outline full-button');
+  openStorage.addEventListener('click', openStorageManager);
+  storageManager.append(storageIntro, openStorage);
+  content.appendChild(storageManager);
 
   const debug = panel('🛠️ Connection Debug');
   debug.classList.add('diagnostic-panel');
