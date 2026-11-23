@@ -42,7 +42,7 @@ function safeExportValue(key, raw) {
     const scrub = (value, field = '') => {
       if (sensitive.test(field)) return '[redacted]';
       if (typeof value === 'string') {
-        return value.replace(/([?&](?:token|key|api_key|password|secret)=)[^&#\\s"']+/gi, '$1[redacted]');
+        return value.replace(/([?&](?:token|key|api_key|password|secret)=)[^&#\s"']+/gi, '$1[redacted]');
       }
       if (Array.isArray(value)) return value.map(item => scrub(item));
       if (value && typeof value === 'object')
