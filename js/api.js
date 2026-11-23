@@ -443,6 +443,43 @@ export function getSyncCacheReport() {
     ...Object.entries(getConnectionInfo()).map(([key, value]) => key + ': ' + (typeof value === 'object' ? JSON.stringify(value) : value))
   ].join('\n');
 }
+// Compare actual five-dataset content, not revision IDs or timestamps.
+// A matching snapshot remains protected because ChrisFit needs it for offline startup.
+function canonicalStorageValue_(value) {
+  if (Array.isArray(value)) return '[' + value.map(canonicalStorageValue_).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map(key =>
+      JSON.stringify(key) + ':' + canonicalStorageValue_(value[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+export async function verifyStoredSnapshot() {
+  if (isDemoMode()) return { status: 'unavailable', message: 'No Google server is configured.' };
+  const stored = cache.loadCache().cache;
+  if (!stored) return { status: 'unavailable', message: 'No valid offline snapshot is stored on this device.' };
+  if (effectivePending_().length) return { status: 'pending', message: 'Unsynchronised local changes exist. No snapshot can be marked verified.' };
+  if (flushing || backgroundTask || destructiveBusy) {
+    return { status: 'busy', message: 'A sync is in progress. Check again when it finishes.' };
+  }
+  try {
+    const server = await get_('bootstrap');
+    if (!cache.validateManifest(server.meta) ||
+      server.meta.spreadsheetId !== stored.meta.spreadsheetId) {
+      return { status: 'different', message: 'The published dataset source differs. Local data was retained.' };
+    }
+    const same = DATASETS.every(name =>
+      canonicalStorageValue_(normaliseDataset_(name, server[name])) ===
+      canonicalStorageValue_(stored.data[name]));
+    if (effectivePending_().length) return { status: 'pending', message: 'New local changes appeared while checking. No data was deleted.' };
+    return same
+      ? { status: 'verified', checkedAt: new Date().toISOString(),
+          message: 'The five cached Google datasets match published server content. This copy remains protected for offline use.' }
+      : { status: 'different', message: 'The saved copy differs from published Google data. It remains protected; nothing was deleted.' };
+  } catch (error) {
+    return { status: 'error', message: 'Google verification failed. Local data remains protected: ' + (error.message || error) };
+  }
+}
+
 export function discardPendingChanges() {
   if (flushing || backgroundTask || destructiveBusy || pending.some(op => op.sent && !acknowledged.has(op.queueId))) {
     throw new Error('Some changes may already have reached Google. Reconnect before discarding them.');
