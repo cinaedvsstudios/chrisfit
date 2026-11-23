@@ -237,7 +237,7 @@ class StorageManager {
       '',
       this.unknown.length + ' unknown-origin entry/entries excluded from management.',
       ...this.capabilities.map(e => e.name + ': ' + e.description)
-    ].join('\\n');
+    ].join('\n');
   }
   async verify() {
     this.verification = { status: 'checking', message: 'Comparing the complete offline snapshot with current Google data…' };
