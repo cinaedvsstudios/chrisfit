@@ -1,0 +1,26 @@
+name: ChrisFit regression tests
+on:
+  push:
+    branches:
+      - feature/chrisfit-storage-manager
+  pull_request:
+    paths:
+      - 'js/**'
+      - 'css/**'
+      - 'index.html'
+      - 'tests/**'
+jobs:
+  frontend-and-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript module syntax
+        run: |
+          for f in js/*.js; do node --check "$f"; done
+      - name: Backend regression tests
+        run: node tests/backend-sync.test.cjs
+      - name: Frontend sync and storage regression tests
+        run: node --experimental-vm-modules tests/frontend-sync.test.cjs
