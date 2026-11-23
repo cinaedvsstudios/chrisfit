@@ -34,6 +34,24 @@ function button(label, fn, cls = 'btn-outline') {
   item.addEventListener('click', fn);
   return item;
 }
+// Diagnostic reports may contain endpoint URLs. Do not include credentials in backups.
+function safeExportValue(key, raw) {
+  if (key !== 'chrisfit.connectionReports.v1') return raw;
+  try {
+    const sensitive = /^(authorization|token|password|api[_-]?key|secret)$/i;
+    const scrub = (value, field = '') => {
+      if (sensitive.test(field)) return '[redacted]';
+      if (typeof value === 'string') {
+        return value.replace(/([?&](?:token|key|api_key|password|secret)=)[^&#\\s"']+/gi, '$1[redacted]');
+      }
+      if (Array.isArray(value)) return value.map(item => scrub(item));
+      if (value && typeof value === 'object')
+        return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, scrub(item, name)]));
+      return value;
+    };
+    return JSON.stringify(scrub(JSON.parse(raw)));
+  } catch (_) { return '[]'; }
+}
 function formattedSize(bytes) {
   if (bytes == null) return 'Unavailable';
   if (bytes < 1024) return bytes + ' B';
@@ -156,13 +174,17 @@ class StorageManager {
     this.overlay.addEventListener('click', event => {
       if (event.target === this.overlay) this.close();
     });
+    document.body.classList.add('storage-manager-open');
     document.body.appendChild(this.overlay);
+    this.dialog.tabIndex = -1;
     this.draw();
+    this.dialog.focus();
     this.scan();
   }
   close() {
     document.removeEventListener('keydown', this.onKey);
     this.overlay.remove();
+    document.body.classList.remove('storage-manager-open');
     if (activeManager === this) activeManager = null;
   }
   async scan() {
@@ -248,7 +270,7 @@ class StorageManager {
     } catch (error) { showToast('Reset blocked to protect your data: ' + (error.message || error), 'error', 5000); }
   }
   exportSelection(keys = this.entries.map(e => e.key)) {
-    const items = this.entries.filter(e => keys.includes(e.key)).map(e => ({ key: e.key, technology: 'localStorage', category: e.category, value: e.value }));
+    const items = this.entries.filter(e => keys.includes(e.key)).map(e => ({ key: e.key, technology: 'localStorage', category: e.category, value: safeExportValue(e.key, e.value) }));
     if (!items.length) { showToast('No selected data to export', 'info'); return; }
     download('chrisfit-browser-storage-' + new Date().toISOString().slice(0, 10) + '.json', {
       type: BACKUP_TYPE, version: BACKUP_VERSION, appId: APP_ID, exportedAt: new Date().toISOString(),
@@ -399,7 +421,7 @@ class StorageManager {
           const visible = card.querySelector('.storage-entry-details');
           if (visible) { visible.remove(); return; }
           const detail = node('div', 'storage-entry-details');
-          const preview = node('pre', 'storage-preview', formatJSON(entry.value));
+          const preview = node('pre', 'storage-preview', entry.value.length > 200000 ? entry.value.slice(0, 20000) + '\\n\\n[Preview truncated. Copy or export the full entry.]' : formatJSON(entry.value));
           detail.appendChild(preview);
           const tools = node('div', 'storage-actions');
           tools.append(button('Copy', () => copy(entry.value)),
