@@ -247,3 +247,29 @@ test('missing server records disappear from the acknowledged local snapshot', as
   assert.equal(a.state.entriesFull.length, 0);
   assert.equal(JSON.parse(a.disk.getItem(cacheKey)).data.entries.length, 0);
 });
+
+test('storage verification compares all five datasets and preserves the offline cache even when equal', async () => {
+  const a = await app(); await a.api.initialise();
+  const before = a.disk.getItem(cacheKey);
+  const result = await a.api.verifyStoredSnapshot();
+  assert.equal(result.status, 'verified');
+  assert.match(result.message, /protected for offline use/);
+  assert.equal(a.disk.getItem(cacheKey), before);
+  assert.deepEqual(a.calls.map(call => call.action), ['bootstrap', 'bootstrap']);
+});
+test('storage verification never verifies pending local-only changes', async () => {
+  const a = await app(); await a.api.initialise();
+  a.api.addEntry('2026-09-29', 'Unpublished burn', -2700);
+  const result = await a.api.verifyStoredSnapshot();
+  assert.equal(result.status, 'pending');
+  assert.equal(a.calls.filter(call => call.action === 'bootstrap').length, 1);
+  assert.equal(a.state.pendingChanges.length, 1);
+});
+test('storage verification detects changed server content and protects local snapshot', async () => {
+  const a = await app(); await a.api.initialise();
+  const before = a.disk.getItem(cacheKey);
+  a.server.post('weights', { date: '2026-09-29', value: 86.4, clientId: 'new-server-weight' });
+  const result = await a.api.verifyStoredSnapshot();
+  assert.equal(result.status, 'different');
+  assert.equal(a.disk.getItem(cacheKey), before);
+});
