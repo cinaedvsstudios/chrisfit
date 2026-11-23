@@ -1,0 +1,58 @@
+/* ChrisFit Storage & Cleanup — inherits the existing app palette. */
+.storage-overlay {
+  position: fixed; inset: 0; z-index: 2100;
+  background: rgba(0, 0, 0, .64);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem; box-sizing: border-box;
+}
+.storage-dialog {
+  background: var(--color-surface); color: var(--color-text-primary);
+  border: 1px solid var(--color-divider); border-radius: var(--radius-card);
+  width: min(850px, 100%); max-height: min(90vh, 900px);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 15px 65px rgba(0,0,0,.35);
+}
+.storage-dialog button, .storage-dialog input, .storage-dialog select, .storage-dialog textarea {
+  font: inherit;
+}
+.storage-dialog h2 { margin: 0 0 .22rem; font-size: 1.3rem; }
+.storage-dialog h3 { margin: .4rem 0; font-size: 1rem; }
+.storage-header { display: flex; gap: .9rem; justify-content: space-between; align-items: flex-start; padding: 1rem 1.1rem .65rem; border-bottom: 1px solid var(--color-divider); }
+.storage-header .settings-note { margin: 0; }
+.storage-tabs { display: flex; gap: .45rem; flex-wrap: wrap; padding: .7rem 1.1rem; border-bottom: 1px solid var(--color-divider); }
+.storage-body { overflow: auto; padding: .8rem 1.1rem 1.2rem; overscroll-behavior: contain; }
+.storage-section-heading { margin-top: 1.15rem; }
+.storage-section-heading p { margin: .3rem 0 .75rem; }
+.storage-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; }
+.storage-stat { padding: .75rem; display: flex; flex-direction: column; gap: .23rem; background: var(--color-surface-soft); border: 1px solid var(--color-divider); border-radius: 12px; min-width: 0; }
+.storage-stat-value { font-weight: 750; font-size: 1.12rem; overflow-wrap: anywhere; }
+.storage-stat-label, .storage-muted { color: var(--color-text-secondary); font-size: .82rem; overflow-wrap: anywhere; }
+.storage-muted { line-height: 1.45; margin: .34rem 0; }
+.storage-capacity { margin-top: .7rem; }
+.storage-track { width: 100%; border-radius: 100px; background: var(--color-divider); height: 9px; overflow: hidden; }
+.storage-track-fill { height: 100%; background: var(--color-primary); max-width: 100%; }
+.storage-category, .storage-entry { border: 1px solid var(--color-divider); border-radius: 12px; padding: .7rem .8rem; margin-top: .5rem; background: var(--color-surface-soft); }
+.storage-category-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; justify-content: space-between; }
+.storage-checkbox-line { display: flex; align-items: center; gap: .45rem; cursor: pointer; margin: .5rem 0; font-size: .88rem; }
+.storage-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .6rem; }
+.storage-actions button { max-width: 100%; }
+.storage-verification { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; padding: .7rem 0; }
+.storage-danger { border-top: 1px solid var(--color-divider); margin-top: 1rem; padding-top: .6rem; }
+.storage-entry-details { margin-top: .7rem; }
+.storage-preview { white-space: pre-wrap; overflow: auto; max-height: 280px; padding: .7rem; border-radius: 10px; border: 1px solid var(--color-divider); background: var(--color-surface); font: 12px/1.45 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.storage-editor { box-sizing: border-box; width: 100%; min-height: 160px; padding: .65rem; background: var(--color-surface); color: var(--color-text-primary); }
+.storage-browse-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; margin: .6rem 0; }
+.storage-browse-controls input[type=search] { min-width: 160px; flex: 1; }
+.storage-dialog input[type=file] { display: block; margin: .6rem 0; max-width: 100%; }
+.storage-dialog select { margin: .6rem 0; padding: .55rem; max-width: 100%; background: var(--color-surface); color: var(--color-text-primary); border: 1px solid var(--color-divider); border-radius: 9px; }
+@media (max-width: 650px) {
+  .storage-overlay { padding: 0; align-items: stretch; }
+  .storage-dialog { border-radius: 0; max-height: 100dvh; width: 100%; }
+  .storage-header, .storage-tabs { padding: .7rem; }
+  .storage-body { padding: .65rem .7rem 1.3rem; }
+  .storage-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .storage-actions button { flex: 1 1 145px; }
+}
+
+/* Keep confirmations visible above the storage modal. */
+.storage-manager-open .toast { z-index: 2200; }
