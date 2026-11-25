@@ -13,6 +13,10 @@ export const GRAPH_PERIODS = [
   { value: '12', label: '1 year' },
   { value: 'all', label: 'All history' }
 ];
+export const GRAPH_GROUPINGS = [
+  { value: 'detailed', label: 'Every recorded day' },
+  { value: 'monthly', label: 'Monthly averages' }
+];
 export const GRAPH_METRICS = [
   { value: 'overview', label: 'Overview' },
   { value: 'food', label: 'Food' },
@@ -91,10 +95,11 @@ function dayStatus(entries) {
 }
 export function buildHistoryGraphModel({
   entries = [], weights = [], settings = {}, months = '3',
-  anchor = new Date(), metric = 'overview'
+  anchor = new Date(), metric = 'overview', grouping = 'detailed'
 } = {}) {
   const chosen = GRAPH_PERIODS.some(period => period.value === String(months)) ? String(months) : '3';
   const selectedMetric = GRAPH_METRICS.some(item => item.value === metric) ? metric : 'overview';
+  const selectedGrouping = GRAPH_GROUPINGS.some(item => item.value === grouping) ? grouping : 'detailed';
   const now = dateUtils.toIso(new Date());
   const anchorDate = localDateOf(anchor);
   const proposedEnd = anchorDate && Number.isFinite(anchorDate.getTime()) ? dateUtils.toIso(anchorDate) : now;
@@ -109,35 +114,68 @@ export function buildHistoryGraphModel({
   const rangeEntries = sourceEntries.filter(entry => entry.date >= start && entry.date <= end);
   const rangeWeights = sourceWeights.filter(weight => weight.date >= start && weight.date <= end)
     .sort((a, b) => a.date.localeCompare(b.date) || number(a.id) - number(b.id));
-  const granularity = chooseGranularity(chosen, start, end);
-
+  const granularity = selectedGrouping === 'monthly' ? 'month' : 'day';
   const buckets = [];
   const lookup = new Map();
-  let cursor = bucketStartDate(start, granularity);
-  while (dateUtils.toIso(cursor) <= end && buckets.length < 150) {
-    const first = dateUtils.toIso(cursor);
-    const next = moveBucket(cursor, granularity);
-    const until = new Date(next.getFullYear(), next.getMonth(), next.getDate() - 1);
-    const last = dateUtils.toIso(until);
-    const clippedStart = first < start ? start : first;
-    const clippedEnd = last > end ? end : last;
-    const id = bucketId(first, granularity);
-    const bucket = { id, start: clippedStart, end: clippedEnd, label: shortLabel(first, granularity),
-      entries: [], weights: [], days: dayCount(clippedStart, clippedEnd) };
-    buckets.push(bucket);
-    lookup.set(id, bucket);
-    cursor = next;
+  if (selectedGrouping === 'monthly') {
+    let cursor = bucketStartDate(start, 'month');
+    while (dateUtils.toIso(cursor) <= end) {
+      const first = dateUtils.toIso(cursor);
+      const next = moveBucket(cursor, 'month');
+      const last = dateUtils.toIso(new Date(next.getFullYear(), next.getMonth(), next.getDate() - 1));
+      const clippedStart = first < start ? start : first;
+      const clippedEnd = last > end ? end : last;
+      const id = first.slice(0, 7);
+      const bucket = { id, start: clippedStart, end: clippedEnd, label: shortLabel(first, 'month'),
+        entries: [], weights: [], days: dayCount(clippedStart, clippedEnd) };
+      buckets.push(bucket);
+      lookup.set(id, bucket);
+      cursor = next;
+    }
+  } else {
+    // One plot point for every recorded calendar day; keep all underlying entries
+    // separately in entryRecords so multiple meals/burns are never lost.
+    const dates = [...new Set([...rangeEntries, ...rangeWeights].map(item => item.date))].sort();
+    dates.forEach(iso => {
+      const bucket = { id: iso, start: iso, end: iso, label: shortLabel(iso, 'day'),
+        entries: [], weights: [], days: 1 };
+      buckets.push(bucket);
+      lookup.set(iso, bucket);
+    });
   }
 
   rangeEntries.forEach(entry => lookup.get(bucketId(entry.date, granularity))?.entries.push(entry));
   rangeWeights.forEach(weight => lookup.get(bucketId(weight.date, granularity))?.weights.push(weight));
   buckets.forEach(bucket => {
     const totals = calc.calculateDay(bucket.entries, settings);
-    Object.assign(bucket, totals, dayStatus(bucket.entries), {
-      weight: bucket.weights.length ? number(bucket.weights[bucket.weights.length - 1].value) : null,
-      targetFood: number(settings.dailyCalories ?? 1500) * bucket.days,
-      targetBurn: number(settings.dailyBurnTarget ?? 2500) * bucket.days,
-      targetNet: -Math.abs(number(settings.dailyDeficit ?? 500)) * bucket.days
+    const status = dayStatus(bucket.entries);
+    const weightMin = bucket.weights.length
+      ? bucket.weights.reduce((best, weight) => !best || number(weight.value) < number(best.value) ? weight : best, null)
+      : null;
+    const finalWeight = bucket.weights.length ? bucket.weights[bucket.weights.length - 1] : null;
+    // An incomplete day must never become a fabricated net-balance observation.
+    const completeDates = new Set();
+    const dayTypes = new Map();
+    bucket.entries.forEach(entry => {
+      const types = dayTypes.get(entry.date) || { food: false, burn: false };
+      if (number(entry.calories) > 0) types.food = true;
+      if (number(entry.calories) < 0) types.burn = true;
+      dayTypes.set(entry.date, types);
+    });
+    dayTypes.forEach((types, day) => { if (types.food && types.burn) completeDates.add(day); });
+    const completeNet = calc.calculateDay(bucket.entries.filter(entry => completeDates.has(entry.date)), settings).net;
+    const monthly = selectedGrouping === 'monthly';
+    Object.assign(bucket, status, {
+      intakeTotal: totals.intake, burnTotal: totals.burn, netTotal: totals.net,
+      intake: monthly ? (status.foodDays ? totals.intake / status.foodDays : null) : (status.foodDays ? totals.intake : null),
+      burn: monthly ? (status.burnDays ? totals.burn / status.burnDays : null) : (status.burnDays ? totals.burn : null),
+      net: monthly ? (status.completeDays ? completeNet / status.completeDays : null)
+        : (status.completeDays ? totals.net : null),
+      weight: monthly ? (weightMin ? number(weightMin.value) : null) : (finalWeight ? number(finalWeight.value) : null),
+      weightDate: monthly ? weightMin?.date ?? null : finalWeight?.date ?? null,
+      targetFood: number(settings.dailyCalories ?? 1500) * (monthly ? 1 : bucket.days),
+      targetBurn: number(settings.dailyBurnTarget ?? 2500) * (monthly ? 1 : bucket.days),
+      targetNet: -Math.abs(number(settings.dailyDeficit ?? 500)) * (monthly ? 1 : bucket.days)
     });
     delete bucket.entries;
     delete bucket.weights;
@@ -149,7 +187,13 @@ export function buildHistoryGraphModel({
   const firstWeight = rangeWeights[0] || null;
   const lastWeight = rangeWeights[rangeWeights.length - 1] || null;
   return {
-    months: chosen, metric: selectedMetric, start, end, granularity, buckets,
+    months: chosen, metric: selectedMetric, grouping: selectedGrouping, start, end, granularity, buckets,
+    entryRecords: rangeEntries.slice().sort((a, b) => a.date.localeCompare(b.date)),
+    weightMeasurements: rangeWeights.map(w => ({ date: w.date, value: number(w.value) })),
+    lowestWeight: rangeWeights.length ? {
+      date: rangeWeights.reduce((best, weight) => number(weight.value) < number(best.value) ? weight : best).date,
+      value: Math.min(...rangeWeights.map(w => number(w.value)))
+    } : null,
     periodDays, ...status, ...totals,
     targetFood: number(settings.dailyCalories ?? 1500) * periodDays,
     targetBurn: number(settings.dailyBurnTarget ?? 2500) * periodDays,
