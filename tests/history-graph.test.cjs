@@ -105,7 +105,7 @@ test('report respects selected metric and summarizes selected dates, values and 
   assert.match(report, /Negative net means a calorie deficit/);
   assert.match(report, /Calendar targets cover every day/);
   assert.ok(report.split('RECORDED DAY BREAKDOWN')[1].includes('Net '));
-  assert.ok(!report.split('RECORDED DAY BREAKDOWN')[1].includes('| Food '));
+  assert.ok(!report.split('RECORDED DAY BREAKDOWN')[1].split('INDIVIDUAL FOOD / BURN ENTRIES')[0].includes('| Food '));
 });
 test('no data is reported without inventing values or dividing by zero', async () => {
   const { buildHistoryGraphModel, buildHistoryGraphReport } = await load();
