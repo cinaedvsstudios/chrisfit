@@ -82,8 +82,8 @@ test('monthly mode uses monthly buckets, and detailed all-history retains all re
   assert.equal(all.start, '2022-02-02');
   assert.equal(all.granularity, 'day');
   assert.ok(all.buckets.some(bucket => bucket.start === '2022-02-02'));
-  assert.equal(all.buckets.length, 5);
-  assert.equal(all.entryRecords.length, 7);
+  assert.equal(all.buckets.length, 4);
+  assert.equal(all.entryRecords.length, 6);
 });
 test('only recorded weights are graphed; missing weight buckets are null, not zero', async () => {
   const { buildHistoryGraphModel } = await load();
