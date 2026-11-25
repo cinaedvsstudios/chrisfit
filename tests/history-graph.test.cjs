@@ -63,14 +63,14 @@ test('daily detail shows only recorded days and retains dates beyond a six-month
   const d = buildHistoryGraphModel({ entries: rows, settings, months: '1', anchor: '2024-08-15' });
   assert.equal(d.granularity, 'day');
   assert.equal(d.start, '2024-08-01');
-  assert.equal(d.buckets.length, 2);
+  assert.equal(d.buckets.length, 1);
   assert.equal(d.buckets[0].start, '2024-08-10');
-  assert.equal(d.buckets[1].end, '2024-08-12');
+  assert.equal(d.buckets[0].end, '2024-08-10');
   assert.equal(d.net, -900);
   const w = buildHistoryGraphModel({ entries: rows, settings, months: '6', anchor: '2024-08-15' });
   assert.equal(w.start, '2024-03-01');
   assert.equal(w.granularity, 'day');
-  assert.equal(w.buckets.length, 5);
+  assert.equal(w.buckets.length, 3);
 });
 test('monthly mode uses monthly buckets, and detailed all-history retains all records', async () => {
   const { buildHistoryGraphModel } = await load();
@@ -104,8 +104,8 @@ test('report respects selected metric and summarizes selected dates, values and 
   assert.match(report, /Net \(food − burn\): 400 kcal/);
   assert.match(report, /Negative net means a calorie deficit/);
   assert.match(report, /Calendar targets cover every day/);
-  assert.ok(report.split('PERIOD BREAKDOWN')[1].includes('Net '));
-  assert.ok(!report.split('PERIOD BREAKDOWN')[1].includes('| Food '));
+  assert.ok(report.split('RECORDED DAY BREAKDOWN')[1].includes('Net '));
+  assert.ok(!report.split('RECORDED DAY BREAKDOWN')[1].includes('| Food '));
 });
 test('no data is reported without inventing values or dividing by zero', async () => {
   const { buildHistoryGraphModel, buildHistoryGraphReport } = await load();
@@ -153,7 +153,7 @@ test('graph UI renders overview SVG, table detail, ranges and copy button from e
   assert.equal(nodes.filter(node => node.tag === 'select').length, 3);
   assert.equal(nodes.filter(node => node.tag === 'svg').length, 3);
   assert.ok(nodes.some(node => node.tag === 'button' && node.textContent === '📋 Copy Report'));
-  assert.ok(nodes.some(node => node.tag === 'summary' && node.textContent === 'View data behind the graph'));
+  assert.ok(nodes.some(node => node.tag === 'summary' && node.textContent === 'View daily records and individual entries'));
   const metric = nodes.find(node => node.tag === 'select' && node.attributes['aria-label'] === 'Graph metric');
   assert.ok(metric);
   metric.value = 'net';
