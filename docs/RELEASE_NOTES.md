@@ -1,3 +1,14 @@
+## Web v2.20 — Detail / Monthly averages History graph — 25 November 2026
+
+- Added a **Detail level** dropdown on the Graph tab: **Every recorded day** (default) or **Monthly averages**.
+- Detailed graphs plot every recorded day (rather than collapsing three months into weekly buckets) and retain all individual food, burn and weight measurements in the expandable breakdown and copied report.
+- Monthly Food average = monthly recorded food calories divided by the number of days with food entries. Monthly Burn average uses days with burn entries.
+- Monthly Deficit/Surplus average = average daily net balance from **complete days** that include both food and burn. Missing days are not assigned fabricated zeros.
+- Monthly Weight = the **lowest actual weight measurement** recorded that month, with its measurement date. Months with no weigh-ins have no weight point; they do not become zero or use adjacent months.
+- Graph titles, summary notes, period breakdown headers and Copy Report descriptions change with the selected detail level, avoiding confusion between daily totals and monthly averages.
+- Added regression tests for monthly aggregates, missing readings, minimum weigh-in selection, and raw-record exports.
+- No changes to Google Sheets, the Apps Script backend, or existing fitness entries.
+
 ## Web v2.19 — Historical Graph & Copy Report — 25 November 2026
 
 - Added **Table / Graph** controls directly beneath Scan Missing in History. Table is the unchanged existing History and Weight History screen.
