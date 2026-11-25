@@ -4,6 +4,7 @@ import * as dateUtils from './date-utils.js';
 import * as calc from './calculations.js';
 import { navigate } from './navigation.js';
 import { showEntryDialog, showWeightDialog } from './dialogs.js';
+import { renderHistoryGraph } from './history-graph.js';
 
 const CUSTOM_PERIOD_KEY = 'chrisfit.history.customPeriod.v1';
 const openMonths = new Set();
@@ -12,6 +13,7 @@ const openDays = new Set();
 const openWeightMonths = new Set();
 let lastAutoExpandedWeek = null;
 let lastAutoExpandedWeightMonth = null;
+let historyView = 'table';
 
 function i() { return state.settings; }
 
@@ -464,8 +466,25 @@ export function renderHistory(autoExpandSelectedWeek = false) {
   const actions = document.createElement('div');
   actions.className = 'history-header-actions';
   actions.append(button('Scan Missing', 'btn-blue compact-button', () => openMissingScanWindow(selectedMonth)));
+  const views = document.createElement('div');
+  views.className = 'history-view-tabs';
+  [
+    ['table', '▦ Table'], ['graph', '📈 Graph']
+  ].forEach(([view, label]) => {
+    const tab = button(label, 'btn-outline', () => {
+      if (historyView !== view) { historyView = view; navigate('history'); }
+    }, 'Show History ' + view + ' view');
+    tab.setAttribute('aria-pressed', String(historyView === view));
+    views.appendChild(tab);
+  });
+  actions.appendChild(views);
   header.append(title, actions);
   container.appendChild(header);
+
+  if (historyView === 'graph') {
+    container.appendChild(renderHistoryGraph());
+    return container;
+  }
 
   // Open the week matching the date the user was viewing when History is entered.
   // Once open, the user can still collapse it without the render immediately reopening it.
