@@ -4,6 +4,7 @@ on:
     branches:
       - feature/chrisfit-storage-manager
       - feature/history-graph-report
+      - feature/history-monthly-averages
   pull_request:
     paths:
       - 'js/**'
