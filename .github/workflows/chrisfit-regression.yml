@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/chrisfit-storage-manager
+      - feature/history-graph-report
   pull_request:
     paths:
       - 'js/**'
@@ -24,3 +25,5 @@ jobs:
         run: node tests/backend-sync.test.cjs
       - name: Frontend sync and storage regression tests
         run: node --experimental-vm-modules tests/frontend-sync.test.cjs
+      - name: History graph calculations and copied report tests
+        run: node --experimental-vm-modules tests/history-graph.test.cjs
