@@ -6,11 +6,12 @@
 import { state, showToast } from './state.js';
 import { navigate } from './navigation.js';
 import * as dateUtils from './date-utils.js';
-import { GRAPH_METRICS, GRAPH_PERIODS, buildHistoryGraphModel, buildHistoryGraphReport } from './history-graph-data.js';
+import { GRAPH_METRICS, GRAPH_PERIODS, GRAPH_GROUPINGS, buildHistoryGraphModel, buildHistoryGraphReport } from './history-graph-data.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const selection = { months: '3', metric: 'overview' };
-const intFormat = number => Number(number).toLocaleString('en-GB', { maximumFractionDigits: 0 });
+const selection = { months: '3', metric: 'overview', grouping: 'detailed' };
+const intFormat = number => number === null || number === undefined || !Number.isFinite(Number(number))
+  ? '—' : Number(number).toLocaleString('en-GB', { maximumFractionDigits: 1 });
 function element(tag, className = '', text = '') {
   const item = document.createElement(tag);
   if (className) item.className = className;
@@ -98,7 +99,9 @@ function svgChart(buckets, type, series) {
         : series.keys[0] === 'burn' ? 'history-graph-burn' : 'history-graph-food',
         offset: 0, width: 24, title: series.title }];
     bars.forEach(bar => {
-      const value = Number(bucket[bar.key]) || 0;
+      const original = bucket[bar.key];
+      if (original === null || original === undefined || !Number.isFinite(Number(original))) return;
+      const value = Number(original);
       if (value === 0) return;
       const y = scale(value);
       const rect = svgElement('rect', {
@@ -154,8 +157,11 @@ function weightChart(buckets) {
   return svg;
 }
 function addBarChart(root, model, mode) {
+  const monthly = model.grouping === 'monthly';
   if (mode === 'paired') {
-    const pane = chartWrapper('Food and Burn', 'Total kcal per ' + model.granularity + ' · actual entries, not estimates', [
+    const pane = chartWrapper('Food and Burn', monthly
+      ? 'Average kcal per month: food on food-logged days, burn on burn-logged days'
+      : 'Actual recorded daily totals in kcal', [
       ['history-graph-food', 'Food'], ['history-graph-burn', 'Burn']
     ]);
     pane.scroll.appendChild(svgChart(model.buckets, 'paired', { keys: ['intake', 'burn'], title: 'Food and Burn' }));
@@ -169,16 +175,28 @@ function addBarChart(root, model, mode) {
       legend: [['history-graph-net-negative', 'Deficit (negative)'], ['history-graph-net-positive', 'Surplus (positive)']] }
   };
   const conf = configs[mode];
-  const pane = chartWrapper(conf.title, 'Totals per ' + model.granularity + (mode === 'net' ? ' · zero line separates deficit and surplus' : ''), conf.legend);
+  const pane = chartWrapper(conf.title,
+    (monthly ? (mode === 'net' ? 'Monthly average net per complete day (food AND burn recorded)'
+      : 'Monthly average kcal per day with a ' + (mode === 'food' ? 'food' : 'burn') + ' entry')
+      : 'Actual daily ' + (mode === 'net' ? 'net balance' : 'totals')) +
+    (mode === 'net' ? ' · negative = deficit' : ''), conf.legend);
   pane.scroll.appendChild(svgChart(model.buckets, 'single', { keys: [conf.key], title: conf.title }));
   root.appendChild(pane.card);
 }
 function addWeightChart(root, model) {
-  const pane = chartWrapper('Weight trend', 'Only periods with a recorded weigh-in are plotted', [
+  const monthly = model.grouping === 'monthly';
+  const pane = chartWrapper('Weight trend', monthly
+    ? 'Lowest measured weight in each month, never an average'
+    : 'Every individual recorded weigh-in', [
     ['history-graph-weight', 'Weight (kg)']
   ]);
   if (!model.weightRecords) pane.scroll.appendChild(element('p', 'empty-state', 'No weigh-ins recorded in this period.'));
-  else pane.scroll.appendChild(weightChart(model.buckets));
+  else {
+    const points = monthly ? model.buckets : model.weightMeasurements.map(weight => ({
+      start: weight.date, label: dateUtils.formatDisplay(weight.date), weight: weight.value
+    }));
+    pane.scroll.appendChild(weightChart(points));
+  }
   root.appendChild(pane.card);
 }
 function showManualCopy(report) {
@@ -225,7 +243,7 @@ export function renderHistoryGraph() {
   const model = buildHistoryGraphModel({
     entries: state.entriesFull, weights: state.weights,
     settings: state.settings, months: selection.months, metric: selection.metric,
-    anchor: state.selectedDate
+    grouping: selection.grouping, anchor: state.selectedDate
   });
   const root = element('div', 'history-graph-root');
 
@@ -256,24 +274,42 @@ export function renderHistoryGraph() {
   metric.addEventListener('change', () => { selection.metric = metric.value; navigate('history'); });
   viewLabel.appendChild(metric);
 
+  const groupLabel = element('label', 'history-graph-range-label history-graph-group-label');
+  groupLabel.appendChild(element('span', '', 'Detail level'));
+  const grouping = element('select');
+  grouping.setAttribute('aria-label', 'Graph detail level');
+  GRAPH_GROUPINGS.forEach(option => {
+    const entry = element('option', '', option.label);
+    entry.value = option.value;
+    grouping.appendChild(entry);
+  });
+  grouping.value = model.grouping;
+  grouping.addEventListener('change', () => { selection.grouping = grouping.value; navigate('history'); });
+  groupLabel.appendChild(grouping);
+
   const copy = button('📋 Copy Report', () => copyHistoryGraphReport(model), 'btn-purple history-graph-copy-button');
-  controls.append(rangeLabel, viewLabel, copy);
+  controls.append(rangeLabel, viewLabel, groupLabel, copy);
   controls.appendChild(element('p', 'history-graph-period-label',
     dateUtils.formatDisplay(model.start) + ' – ' + dateUtils.formatDisplay(model.end) +
-    ' · grouped by ' + model.granularity + ' · ' + model.loggedDays + ' logged day(s)'));
+    ' · ' + (model.grouping === 'monthly' ? 'monthly daily averages / lowest monthly weight' : 'each recorded day') +
+    ' · ' + model.loggedDays + ' logged day(s)'));
   root.appendChild(controls);
 
   const summaries = element('section', 'history-graph-summary');
   const weightChange = model.weightFirst && model.weightLast && model.weightRecords > 1
     ? (model.weightLast.value - model.weightFirst.value)
     : null;
-  const weightSubtitle = weightChange === null ? model.weightRecords + ' recorded weigh-in(s)'
+  const weightSubtitle = model.grouping === 'monthly'
+    ? 'Lowest actual weigh-in across selected period'
+    : weightChange === null ? model.weightRecords + ' recorded weigh-in(s)'
     : 'Change: ' + (weightChange > 0 ? '+' : '') + weightChange.toFixed(1) + ' kg';
   const metricCards = [
     [(state.settings.emojiFood || '🥦') + ' Food', intFormat(model.intake) + ' kcal', 'Target ' + intFormat(model.targetFood), ''],
     [(state.settings.emojiBurn || '🔥') + ' Burn', intFormat(model.burn) + ' kcal', 'Target ' + intFormat(model.targetBurn), ''],
     [(state.settings.emojiDeficit || '📉') + ' Net balance', (model.net > 0 ? '+' : '') + intFormat(model.net) + ' kcal', 'Target ' + intFormat(model.targetNet), model.net < 0 ? 'outcome-loss' : model.net > 0 ? 'outcome-gain' : ''],
-    [(state.settings.emojiWeight || '⚖️') + ' Weight', model.weightLast ? model.weightLast.value + ' kg' : '—', weightSubtitle, '']
+    [(state.settings.emojiWeight || '⚖️') + (model.grouping === 'monthly' ? ' Lowest weight' : ' Weight'),
+      (model.grouping === 'monthly' ? model.lowestWeight?.value : model.weightLast?.value) != null
+        ? (model.grouping === 'monthly' ? model.lowestWeight.value : model.weightLast.value) + ' kg' : '—', weightSubtitle, '']
   ];
   metricCards.forEach(([heading, value, note, color]) => {
     const card = element('article', 'card history-graph-summary-card');
@@ -283,9 +319,10 @@ export function renderHistoryGraph() {
   root.appendChild(summaries);
   const details = element('p', 'history-graph-note',
     'Logged days: ' + model.loggedDays + ' · Both food and burn: ' + model.completeDays +
-    ' · Average per logged day: Food ' + (model.averageFood ?? '—') +
-    ', Burn ' + (model.averageBurn ?? '—') + ', Net ' + (model.averageNet ?? '—') +
-    ' kcal. Targets use all ' + model.periodDays + ' calendar days.');
+    (model.grouping === 'monthly'
+      ? ' · Food/burn monthly averages use days with that metric logged; net uses only complete days.'
+      : ' · Each dated column includes its recorded entries.') +
+    ' Targets cover all ' + model.periodDays + ' calendar days.');
   root.appendChild(details);
 
   if (!model.loggedDays && !model.weightRecords)
@@ -299,16 +336,21 @@ export function renderHistoryGraph() {
     else addBarChart(root, model, model.metric);
   }
   const caption = element('p', 'history-graph-note',
+    (model.grouping === 'monthly' ? 'Monthly weight points are the lowest recorded weigh-in, not averages. ' : '') +
     'Scroll charts sideways on smaller screens. Tap a bar or weight point for exact values where supported. Unlogged days are not assumed to be zero.');
   root.appendChild(caption);
 
   const disclosure = element('details', 'card history-graph-breakdown');
-  disclosure.appendChild(element('summary', '', 'View data behind the graph'));
+  disclosure.appendChild(element('summary', '',
+    model.grouping === 'monthly' ? 'View monthly averages and minimum weights' : 'View daily records and individual entries'));
   const tableScroll = element('div', 'history-graph-breakdown-scroll');
   const table = element('table');
   const heading = element('thead');
   const row = element('tr');
-  ['Period', 'Food', 'Burn', 'Net', 'Weight', 'Days logged'].forEach(text => row.appendChild(element('th', '', text)));
+  (model.grouping === 'monthly'
+    ? ['Month', 'Avg food/day', 'Avg burn/day', 'Avg net/complete day', 'Lowest weight', 'Logged days']
+    : ['Recorded day', 'Food', 'Burn', 'Net', 'Weight', 'Logged days'])
+    .forEach(text => row.appendChild(element('th', '', text)));
   heading.appendChild(row);
   table.appendChild(heading);
   const body = element('tbody');
@@ -319,7 +361,8 @@ export function renderHistoryGraph() {
       intFormat(bucket.intake),
       intFormat(bucket.burn),
       intFormat(bucket.net),
-      bucket.weight === null ? '—' : bucket.weight + ' kg',
+      bucket.weight === null ? '—' : bucket.weight + ' kg' +
+        (model.grouping === 'monthly' && bucket.weightDate ? ' (' + dateUtils.formatDisplay(bucket.weightDate) + ')' : ''),
       String(bucket.loggedDays)
     ].forEach(value => r.appendChild(element('td', '', value)));
     body.appendChild(r);
@@ -327,6 +370,35 @@ export function renderHistoryGraph() {
   table.appendChild(body);
   tableScroll.appendChild(table);
   disclosure.appendChild(tableScroll);
+  if (model.grouping === 'detailed') {
+    const rawTitle = element('h4', 'history-graph-raw-heading', 'Individual food and burn entries');
+    disclosure.appendChild(rawTitle);
+    const list = element('div', 'history-graph-breakdown-scroll');
+    const rawTable = element('table');
+    const rawHeader = element('thead');
+    const rawHead = element('tr');
+    ['Date', 'Entry', 'Calories'].forEach(label => rawHead.appendChild(element('th', '', label)));
+    rawHeader.appendChild(rawHead);
+    rawTable.appendChild(rawHeader);
+    const rawBody = element('tbody');
+    model.entryRecords.forEach(entry => {
+      const rawRow = element('tr');
+      [dateUtils.formatDisplay(entry.date), entry.name || 'Unnamed entry',
+        (Number(entry.calories) > 0 ? '+' : '') + intFormat(entry.calories)]
+        .forEach(text => rawRow.appendChild(element('td', '', text)));
+      rawBody.appendChild(rawRow);
+    });
+    rawTable.appendChild(rawBody);
+    list.appendChild(rawTable);
+    disclosure.appendChild(list);
+    if (model.weightMeasurements.length) {
+      const weightHeading = element('h4', 'history-graph-raw-heading', 'Individual weight measurements');
+      disclosure.appendChild(weightHeading);
+      const weightList = element('p', 'history-graph-note',
+        model.weightMeasurements.map(w => dateUtils.formatDisplay(w.date) + ': ' + w.value + ' kg').join(' · '));
+      disclosure.appendChild(weightList);
+    }
+  }
   root.appendChild(disclosure);
   return root;
 }
