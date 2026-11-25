@@ -198,9 +198,16 @@ export function buildHistoryGraphModel({
     targetFood: number(settings.dailyCalories ?? 1500) * periodDays,
     targetBurn: number(settings.dailyBurnTarget ?? 2500) * periodDays,
     targetNet: -Math.abs(number(settings.dailyDeficit ?? 500)) * periodDays,
-    averageFood: status.loggedDays ? Math.round(totals.intake / status.loggedDays) : null,
-    averageBurn: status.loggedDays ? Math.round(totals.burn / status.loggedDays) : null,
-    averageNet: status.loggedDays ? Math.round(totals.net / status.loggedDays) : null,
+    averageFood: selectedGrouping === 'monthly'
+      ? (status.foodDays ? Math.round(totals.intake / status.foodDays) : null)
+      : (status.loggedDays ? Math.round(totals.intake / status.loggedDays) : null),
+    averageBurn: selectedGrouping === 'monthly'
+      ? (status.burnDays ? Math.round(totals.burn / status.burnDays) : null)
+      : (status.loggedDays ? Math.round(totals.burn / status.loggedDays) : null),
+    averageNet: selectedGrouping === 'monthly'
+      ? (status.completeDays ? Math.round(buckets.reduce((sum, bucket) =>
+          sum + (bucket.net ?? 0) * bucket.completeDays, 0) / status.completeDays) : null)
+      : (status.loggedDays ? Math.round(totals.net / status.loggedDays) : null),
     weightFirst: firstWeight ? { date: firstWeight.date, value: number(firstWeight.value) } : null,
     weightLast: lastWeight ? { date: lastWeight.date, value: number(lastWeight.value) } : null,
     weightRecords: rangeWeights.length
@@ -226,7 +233,7 @@ export function buildHistoryGraphReport(model) {
     'Food: ' + niceNumber(model.intake) + ' kcal / ' + niceNumber(model.targetFood) + ' kcal calendar target',
     'Burn: ' + niceNumber(model.burn) + ' kcal / ' + niceNumber(model.targetBurn) + ' kcal calendar target',
     'Net (food − burn): ' + niceNumber(model.net) + ' kcal / ' + niceNumber(model.targetNet) + ' kcal calendar target',
-    'Daily averages per logged day — Food: ' + (model.averageFood ?? 'n/a') +
+    (model.grouping === 'monthly' ? 'Daily averages — food on food-logged days, burn on burn-logged days, net on complete days — Food: ' : 'Daily averages per logged day — Food: ') + (model.averageFood ?? 'n/a') +
       ' kcal; Burn: ' + (model.averageBurn ?? 'n/a') + ' kcal; Net: ' + (model.averageNet ?? 'n/a') + ' kcal'
   ];
   if (model.weightRecords) {
