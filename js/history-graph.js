@@ -264,11 +264,16 @@ export function renderHistoryGraph() {
   root.appendChild(controls);
 
   const summaries = element('section', 'history-graph-summary');
+  const weightChange = model.weightFirst && model.weightLast && model.weightRecords > 1
+    ? (model.weightLast.value - model.weightFirst.value)
+    : null;
+  const weightSubtitle = weightChange === null ? model.weightRecords + ' recorded weigh-in(s)'
+    : 'Change: ' + (weightChange > 0 ? '+' : '') + weightChange.toFixed(1) + ' kg';
   const metricCards = [
-    ['🥦 Food', intFormat(model.intake) + ' kcal', 'Target ' + intFormat(model.targetFood), ''],
-    ['🔥 Burn', intFormat(model.burn) + ' kcal', 'Target ' + intFormat(model.targetBurn), ''],
-    ['📉 Net balance', (model.net > 0 ? '+' : '') + intFormat(model.net) + ' kcal', 'Target ' + intFormat(model.targetNet), model.net < 0 ? 'outcome-loss' : model.net > 0 ? 'outcome-gain' : ''],
-    ['⚖️ Weight', model.weightLast ? model.weightLast.value + ' kg' : '—', model.weightRecords + ' recorded weigh-in(s)', '']
+    [(state.settings.emojiFood || '🥦') + ' Food', intFormat(model.intake) + ' kcal', 'Target ' + intFormat(model.targetFood), ''],
+    [(state.settings.emojiBurn || '🔥') + ' Burn', intFormat(model.burn) + ' kcal', 'Target ' + intFormat(model.targetBurn), ''],
+    [(state.settings.emojiDeficit || '📉') + ' Net balance', (model.net > 0 ? '+' : '') + intFormat(model.net) + ' kcal', 'Target ' + intFormat(model.targetNet), model.net < 0 ? 'outcome-loss' : model.net > 0 ? 'outcome-gain' : ''],
+    [(state.settings.emojiWeight || '⚖️') + ' Weight', model.weightLast ? model.weightLast.value + ' kg' : '—', weightSubtitle, '']
   ];
   metricCards.forEach(([heading, value, note, color]) => {
     const card = element('article', 'card history-graph-summary-card');
