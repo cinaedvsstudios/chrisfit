@@ -1,3 +1,14 @@
+## Web v2.19 — Historical Graph & Copy Report — 25 November 2026
+
+- Added **Table / Graph** controls directly beneath Scan Missing in History. Table is the unchanged existing History and Weight History screen.
+- Graph starts at 3 months, with 1 month, 6 months, 1 year and all-history range options. The visible range ends at the selected day, never beyond today's date.
+- Graph views: Overview (Food vs Burn, Deficit/Surplus, and recorded Weight), plus individual Food, Burn, Deficit and Weight views.
+- Graphs group 1 month by day, 3 and 6 months by week, and 1 year by month; all history switches to years for long date ranges. Mobile charts scroll horizontally.
+- Added per-range totals, targets, averages per logged day, weight change, and a collapsible numeric breakdown.
+- Added **Copy Report** to graph controls. It copies the selected range, metrics, totals, weights when available, per-bucket breakdown and missing-entry caveats. Provides a manual fallback if clipboard access is blocked.
+- Uses cached/loaded data already in the History screen and the same calculation conventions. No new Google Apps Script endpoints, spreadsheet changes or fitness-entry edits.
+- Added automated aggregation and report tests and retained existing sync tests.
+
 ## v2.7 — Month and Custom Period History summaries — 18 June 2026
 
 - Added a Month summary underneath the selected week in History.
