@@ -113,3 +113,55 @@ test('no data is reported without inventing values or dividing by zero', async (
   assert.equal(m.weightRecords, 0);
   assert.match(buildHistoryGraphReport(m), /n\/a/);
 });
+
+test('graph UI renders overview SVG, table detail, ranges and copy button from existing state', async () => {
+  class Node {
+    constructor(tag, content = '') {
+      this.tag = tag; this.children = []; this.attributes = {}; this.listeners = {}; this.style = {};
+      this.textContent = content; this.value = ''; this.className = '';
+    }
+    append(...items) { this.children.push(...items); }
+    appendChild(item) { this.children.push(item); return item; }
+    setAttribute(key, value) { this.attributes[key] = String(value); }
+    addEventListener(event, callback) { this.listeners[event] = callback; }
+  }
+  const fakeDocument = {
+    createElement: tag => new Node(tag),
+    createElementNS: (_ns, tag) => new Node(tag),
+    createTextNode: text => new Node('#text', text)
+  };
+  ctx.document = fakeDocument;
+  const graph = await source('history-graph.js');
+  await graph.evaluate();
+  const state = modules.get('state.js').namespace.state;
+  state.selectedDate = new Date(2024, 7, 15);
+  state.entriesFull = rows.slice();
+  state.weights = weights.slice();
+  state.settings = { ...state.settings, ...settings };
+  const root = graph.namespace.renderHistoryGraph();
+  const nodes = [];
+  function collect(node) {
+    if (!node || typeof node !== 'object') return;
+    nodes.push(node);
+    (node.children || []).forEach(collect);
+  }
+  collect(root);
+  assert.equal(root.className, 'history-graph-root');
+  assert.equal(nodes.filter(node => node.tag === 'select').length, 2);
+  assert.equal(nodes.filter(node => node.tag === 'svg').length, 3);
+  assert.ok(nodes.some(node => node.tag === 'button' && node.textContent === '📋 Copy Report'));
+  assert.ok(nodes.some(node => node.tag === 'summary' && node.textContent === 'View data behind the graph'));
+  const metric = nodes.find(node => node.tag === 'select' && node.attributes['aria-label'] === 'Graph metric');
+  assert.ok(metric);
+  metric.value = 'net';
+  metric.listeners.change();
+  const updated = graph.namespace.renderHistoryGraph();
+  const nextNodes = [];
+  function walk(node) {
+    nextNodes.push(node);
+    (node.children || []).forEach(walk);
+  }
+  walk(updated);
+  assert.equal(nextNodes.filter(node => node.tag === 'svg').length, 1);
+  assert.ok(nextNodes.some(node => node.tag === 'h3' && node.textContent === 'Deficit / Surplus'));
+});
