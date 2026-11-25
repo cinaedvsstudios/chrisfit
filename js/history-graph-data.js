@@ -209,13 +209,17 @@ export function buildHistoryGraphModel({
 function reportMetric(model) {
   return GRAPH_METRICS.find(item => item.value === model.metric)?.label || 'Overview';
 }
-function niceNumber(num) { return Number(num).toLocaleString('en-GB', { maximumFractionDigits: 1 }); }
+function niceNumber(num) {
+  return num === null || num === undefined || !Number.isFinite(Number(num))
+    ? 'n/a' : Number(num).toLocaleString('en-GB', { maximumFractionDigits: 1 });
+}
 export function buildHistoryGraphReport(model) {
   const periodLabel = GRAPH_PERIODS.find(item => item.value === model.months)?.label || '3 months';
   const stats = [
     'ChrisFit — History Graph Report',
     'Period: ' + dateUtils.formatDisplay(model.start) + ' – ' + dateUtils.formatDisplay(model.end),
-    'Range: ' + periodLabel + ' | Grouped by: ' + model.granularity + ' | View: ' + reportMetric(model),
+    'Range: ' + periodLabel + ' | Display: ' + (model.grouping === 'monthly' ? 'Monthly averages / lowest recorded weight' : 'Every recorded day') +
+      ' | View: ' + reportMetric(model),
     'Days in range: ' + model.periodDays + ' | Logged days: ' + model.loggedDays + ' | Days with both food and burn: ' + model.completeDays,
     '',
     'TOTALS',
@@ -231,18 +235,40 @@ export function buildHistoryGraphReport(model) {
       (model.weightLast.value - model.weightFirst.value >= 0 ? '+' : '') +
       niceNumber(model.weightLast.value - model.weightFirst.value) + ' kg');
   }
-  stats.push('', 'PERIOD BREAKDOWN');
+  stats.push('', model.grouping === 'monthly' ? 'MONTHLY AVERAGES / LOWEST RECORDED WEIGHTS' : 'RECORDED DAY BREAKDOWN');
   model.buckets.forEach(bucket => {
     const name = dateUtils.formatDisplay(bucket.start) + ' – ' + dateUtils.formatDisplay(bucket.end);
     const data = [];
-    if (model.metric === 'overview' || model.metric === 'food') data.push('Food ' + niceNumber(bucket.intake));
-    if (model.metric === 'overview' || model.metric === 'burn') data.push('Burn ' + niceNumber(bucket.burn));
-    if (model.metric === 'overview' || model.metric === 'net') data.push('Net ' + niceNumber(bucket.net));
+    const prefix = model.grouping === 'monthly' ? 'Avg ' : '';
+    if (model.metric === 'overview' || model.metric === 'food')
+      data.push(prefix + 'Food ' + niceNumber(bucket.intake) + ' kcal' +
+        (model.grouping === 'monthly' ? ' (' + bucket.foodDays + ' food-logged days)' : ''));
+    if (model.metric === 'overview' || model.metric === 'burn')
+      data.push(prefix + 'Burn ' + niceNumber(bucket.burn) + ' kcal' +
+        (model.grouping === 'monthly' ? ' (' + bucket.burnDays + ' burn-logged days)' : ''));
+    if (model.metric === 'overview' || model.metric === 'net')
+      data.push(prefix + 'Net ' + niceNumber(bucket.net) + ' kcal' +
+        (model.grouping === 'monthly' ? ' (' + bucket.completeDays + ' complete days)' : ''));
     if (model.metric === 'overview' || model.metric === 'weight') {
-      data.push('Weight ' + (bucket.weight === null ? 'no weigh-in' : niceNumber(bucket.weight) + ' kg'));
+      data.push((model.grouping === 'monthly' ? 'Lowest weight ' : 'Latest weight ') +
+        (bucket.weight === null ? 'no weigh-in' : niceNumber(bucket.weight) + ' kg' +
+        (bucket.weightDate ? ' (' + dateUtils.formatDisplay(bucket.weightDate) + ')' : '')));
     }
     stats.push(name + ' | ' + data.join(' | ') + ' | Logged days ' + bucket.loggedDays);
   });
+  if (model.grouping === 'detailed') {
+    stats.push('', 'INDIVIDUAL FOOD / BURN ENTRIES');
+    model.entryRecords.forEach(entry => stats.push(dateUtils.formatDisplay(entry.date) + ' | ' +
+      (entry.name || 'Unnamed entry') + ' | ' + niceNumber(entry.calories) + ' kcal'));
+    stats.push('', 'INDIVIDUAL WEIGHT ENTRIES');
+    model.weightMeasurements.forEach(weight => stats.push(dateUtils.formatDisplay(weight.date) +
+      ' | ' + niceNumber(weight.value) + ' kg'));
+  } else {
+    stats.push('', 'Monthly food averages divide total food by days with food entries.',
+      'Monthly burn averages divide total burn by days with burn entries.',
+      'Monthly net averages use only days with BOTH food and burn recorded.',
+      'Monthly weight is the LOWEST actual weigh-in for that month, never an average.');
+  }
   stats.push('', 'Negative net means a calorie deficit; positive net means a surplus.',
     'Calendar targets cover every day in the selected range, including days with missing entries.',
     'A missing food or burn entry is not assumed to be a real zero.');
